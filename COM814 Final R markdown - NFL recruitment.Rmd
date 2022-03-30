@@ -1,0 +1,4305 @@
+---
+title: "COM814FinalProject"
+author: "Patrick Donnelly"
+date: "17/05/2021"
+output:
+  word_document: default
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+Please install and load all packages and libraries first to improve program flow
+
+```{r}
+#install and load packages and libraries
+install.packages("mice")
+library(mice)
+install.packages("VIM")
+library(VIM)
+install.packages("missForest")
+library(missForest)
+install.packages("tidyverse")
+library(tidyverse)
+install.packages("nnet")
+install.packages("neuralnet")
+install.packages("NeuralNetTools")
+library(nnet)
+library(neuralnet)
+library(NeuralNetTools)
+install.packages("forecast")
+library(forecast)
+install.packages('ggplot2')
+library(ggplot2)
+library(MASS)
+library(e1071)
+install.packages("GGally")
+library(GGally)
+
+# install DMwR package - 
+#install.packages( "https://cran.r-project.org/src/contrib/Archive/DMwR/DMwR_0.1.0.tar.gz", repos=NULL, type="source" )
+#install.packages("caTools")
+#install.packages("randomForest")
+#install.packages("randomForestExplainer")
+
+library(randomForest)
+library(caTools)
+library(randomForestExplainer)
+install.packages("data.table")
+library(data.table)
+install.packages("caret")
+library(caret)
+install.packages('MLmetrics')
+library(MLmetrics)
+library(ROCR)
+library(pROC)
+install.packages("corrplot")
+library(corrplot)
+library("Boruta")
+install.packages("smotefamily")
+library(smotefamily)
+library(dplyr)
+install.packages("class")
+library(class)
+install.packages("nnet")
+install.packages("neuralnet")
+install.packages("NeuralNetTools")
+library(nnet)
+library(neuralnet)
+library(NeuralNetTools)
+```
+
+
+This is an R Markdown document of the final project for Module Com814 of the MSc in PSD with Data Science. 
+The NFL dataset consists of 20 files linked by a unique player ID and contains information relating to the players 'Combine' scores and statistics from their professional career.
+
+```{r}
+# read the files
+
+combine<-read.csv("combine.csv", stringsAsFactors = FALSE)
+
+draft<-read.csv("draft.csv", stringsAsFactors = FALSE)
+
+fumbles<-read.csv("fumbles.csv", stringsAsFactors = FALSE)
+
+fumblForced<- read.csv("fumblForced.csv", stringsAsFactors = FALSE)
+
+gameParticipation<-read.csv("gameParticipation.csv", stringsAsFactors = FALSE)
+
+games<-read.csv("games.csv", stringsAsFactors = FALSE)
+
+interceptions<-read.csv("interceptions.csv", stringsAsFactors = FALSE)
+
+kickReturns<-read.csv("kickReturns.csv", stringsAsFactors = FALSE)
+
+kicks<-read.csv("kicks.csv", stringsAsFactors = FALSE)
+
+passDef<-read.csv("PassDef.csv", stringsAsFactors = FALSE)
+
+passer<-read.csv("passer.csv", stringsAsFactors = FALSE)
+
+penalties<-read.csv("penalties.csv", stringsAsFactors = FALSE)
+
+players<-read.csv("players.csv", stringsAsFactors = FALSE)
+
+as.data.frame(colnames(players))
+
+plays<-read.csv("plays.csv", stringsAsFactors = FALSE)
+
+qbHits<-read.csv("qbHits.csv", stringsAsFactors = FALSE)
+
+receiver<-read.csv("receiver.csv", stringsAsFactors = FALSE)
+
+rusher<-read.csv("rusher.csv", stringsAsFactors = FALSE)
+
+sacks<-read.csv("sacks.csv", stringsAsFactors = FALSE)
+
+tackles<-read.csv("tackles.csv", stringsAsFactors = FALSE)
+
+```
+
+
+
+```{r}
+#look at the data
+(as.data.frame(summary(gameParticipation))) # min gameId =56170
+dim(gameParticipation)
+ 
+# [1] 423185     26
+
+dim(games)
+# [1] 5308   16
+summary(games)
+# min gameId = 26909 , this will need subsetted to min game Id = 56170
+#find year/season of gameId = 56170
+(as.data.frame(year <- games$season[games$gameId==56170]))
+# 2014
+games <- subset(games, gameId>=56170 )
+
+# we will only be interested in career based stats from 2014 onwards and
+# we will include combine scores and draft pick data from 2 years prior to this ie, 2012 
+
+summary(plays) # min playId = 1, Min game id = 26909. we will subset this to include only games with ID from 56170. We can then identify  the min playId which refers to gameParticipation 
+dim(plays)
+# [1] 870384     44
+plays <- subset(plays, gameId>=56170)
+(as.data.frame(summary(plays)))# Now,  # min playId = 10000001, Min game id = 56170. 
+dim(plays)
+# 328335     44
+
+summary(combine) # combine year min = 1987 , this will need subsetted to inlcude only data from 2012 onwards
+dim(combine)
+# 10080    35
+combine <- subset(combine, combineYear >= 2012)
+
+
+
+summary(draft) # draft year min = 1977, this will need subsetted to inlcude only data from 2012 onwards
+dim(draft)
+# 12140    27
+draft <- subset(draft, draft>=2012)
+
+summary(fumbles) # min playId = 1, will need subsetted to inlcude only plays with playId> =10000001
+fumbles <- subset(fumbles, playId>= 10000001)
+
+summary(fumblForced) # min playId =1, will need subsetted to inlcude only plays with playId> =10000001
+fumblForced <- subset(fumblForced, playId>= 10000001)
+
+summary(interceptions) # min playId = 36, will need subsetted to inlcude only plays with playId> =10000001
+interceptions <- subset(interceptions, playId>= 10000001)
+
+summary(kicks) # min playId =1, will need subsetted to inlcude only plays with playId> =10000001
+kicks <- subset(kicks, playId>= 10000001)
+
+summary(kickReturns) # min playId =1, will need subsetted to inlcude only plays with playId> =10000001
+kickReturns <- subset(kickReturns, playId>= 10000001)
+
+summary(passDef) # min playId =10, will need subsetted to inlcude only plays with playId> =10000001
+passDef <- subset(passDef, playId>= 10000001)
+
+summary(passer) # min playId =3, will need subsetted to inlcude only plays with playId> =10000001
+passer <- subset(passer, playId>= 10000001)
+
+summary(penalties) # min playId =22, will need subsetted to inlcude onlay plays with playId> =10000001
+penalties <- subset(penalties, playId>= 10000001)
+
+# summary(players)
+
+summary(qbHits) # min playId =26, will need subsetted to inlcude onlay plays with playId> =10000001
+qbHits <- subset(qbHits, playId>= 10000001)
+
+summary(receiver) # min playId = 3, will need subsetted to inlcude onlay plays with playId> =10000001
+receiver <- subset(receiver, playId>= 10000001)
+
+summary(rusher)# min playId = 2, will need subsetted to inlcude onlay plays with playId> =10000001
+rusher <- subset(rusher, playId>= 10000001)
+
+summary(sacks) # min playId = 26, will need subsetted to inlcude onlay plays with playId> =10000001
+sacks <- subset(sacks, playId>= 10000001)
+
+summary(tackles)# min playId =1,will need subsetted to inlcude onlay plays with playId> =10000001
+tackles <- subset(tackles, playId>= 10000001)
+
+```
+
+```{r}
+
+#let's start by looking at the combine data
+
+dim(combine)
+# 2433 rows
+# 35 variables
+
+#let's consider reducing the dimensionality of the combine table
+colnames(combine)
+
+#Remove cols considered unimportant to the problem
+combine <- subset(combine, select = -c( nameFull,college,collegeId,heightInches,weight,dob,playerProfileUrl, homeCity, homeState, homeCountry ,highSchool,  hsCity, hsState, hsCountry))
+
+dim(combine)
+# now 21 cols
+
+#identify if there are any NA values and Identify their locations
+sum(is.na(combine))
+# 13200 NA values
+colSums(is.na(combine))
+
+# change nflID to int
+#class(combine$nflId)
+combine$nflId <- as.integer(combine$nflId)
+#class(combine$nflId)
+
+
+md.pattern(combine)
+
+#visualise missing data
+
+mice_plot <- aggr(combine, col=c('navyblue','yellow'),
+                    numbers=TRUE, sortVars=TRUE,
+                    labels=names(combine), cex.axis=.7,
+                    gap=3, ylab=c("Missing data","Pattern"))
+
+#remove cols with more than 50% NAs
+#combineHand
+#combineArm
+#combine3cone
+#combine60ydShuttle   
+#combineWonderlic
+combine50 <- combine[, which(colMeans(!is.na(combine)) > 0.5)]
+
+names(combine50)
+names(combine)
+
+sum(is.na(combine50))
+colSums(is.na(combine50))
+dim(combine50)
+# 17 cols
+```
+
+```{r}
+#misForest imputation on NAs combine50
+
+
+#lets impute data using missForrest
+(selectedCols <- combine50[10:17])
+combine_imp <- missForest(selectedCols,verbose = TRUE)
+str(combine_imp)
+summary(combine_imp$ximp)
+## The final results can be accessed directly. The estimated error:
+combine_imp$OOBerror
+#    NRMSE 
+#  0.003659553  
+
+#rejoin the imupted dataframe with the combine50 DF
+str(combine50)
+combine50$nflId <- combine_imp$ximp$nflId
+combine50$ageAtDraft <- combine_imp$ximp$ageAtDraft
+combine50$combine40yd <- combine_imp$ximp$combine40yd
+combine50$combineVert <- combine_imp$ximp$combineVert
+combine50$combineBench <- combine_imp$ximp$combineBench
+combine50$combineShuttle <- combine_imp$ximp$combineShuttle
+combine50$combineBroad <- combine_imp$ximp$combineBroad
+combine50$combine3cone <- combine_imp$ximp$combine3cone
+
+sum(is.na(combine50))
+colSums(is.na(combine50))
+dim(combine50)
+#2433 17
+
+#now we have a complete dataframe without any null values
+
+```
+
+```{r}
+#join other relevant tables
+#Draft
+
+colnames(draft)
+#keep only first 4 cols and feature number 13
+draft <-subset(draft, select = c(1:4,13))
+colnames(draft)
+
+#check for NAs
+sum(is.na(draft))
+colSums(is.na(draft))
+
+#drop 'round' feature - contains many NAs, and is not important to the overall solution to posed problem
+draft <- subset(draft, select = c(1:2,4:5))
+
+summary(draft)
+dim(draft)
+#2042 4
+str(draft)
+
+sum(is.na(draft))
+colSums(is.na(draft))
+
+#merge combine50 and draft
+merged <- combine50 %>% left_join(draft, by=c('playerId'))
+
+dim(merged)
+#2440 20
+
+str(merged)
+#remove feature nflId.y as is a duplicate and rename nflId.x, nflId
+merged <- subset(merged,select = -c(nflId.y))
+merged <- merged%>%rename('nflId' = 'nflId.x')
+#rename cols
+merged <- merged %>% rename('DraftYear' = 'draft')
+merged <- merged%>%rename('DraftPPick' = 'pick')
+
+#check for NAs
+sum(is.na(merged))
+colSums(is.na(merged))
+
+#811 NAs in draft and pick columns relates to 811 undrafted players - ie players who never made professional (according to the dataset) - replace NAs with 0 for all of these players
+
+merged[is.na(merged)] <- 0
+
+#now remove draft (year)
+merged <- subset(merged, select = -c(DraftYear))
+
+summary(merged)
+
+```
+
+# lets look at other data files
+
+```{r}
+#game participation
+#use game participation file and reference playerId to count how many games a player played in
+
+summary(gameParticipation)
+
+#reduce features
+gameParticipation <- subset(gameParticipation, select = c(gameId, playerId))
+
+# next count how many games in which a player featured for at least 1 play (for each player)
+gamesFeatured <- table(gameParticipation$playerId)
+gamesFeatured <-  as.data.frame(gamesFeatured)
+
+names(gamesFeatured)[1] <-  'playerId'
+names(gamesFeatured)[2] <- '#Games'
+
+
+str(gamesFeatured)
+summary(gamesFeatured)
+
+# and  drop duplicates
+gamesFeatured <-  gamesFeatured[!duplicated(gamesFeatured), ]
+
+merged <- merge(merged, gamesFeatured,all.x = TRUE)
+str(merged)
+summary(merged)
+#390  - NAs - players who completed the Combine, were drafted but never played in an NFL game
+#replace NAs with 0
+merged[is.na(merged)] <- 0
+summary(merged)
+#now no NAs
+
+
+
+```
+
+
+
+```{r}
+#fumbles
+colnames(fumbles)
+
+#reduce features
+fumbles <- subset(fumbles, select = c(fumId,playId,playerId))
+
+#count how many fumbles by each player
+playerFumbld <- table(fumbles$playerId)
+playerFumbld <-  as.data.frame(playerFumbld)
+
+names(playerFumbld)[1] <-  'playerId'
+names(playerFumbld)[2] <- '#Fumbles'
+fumbles1 <-merge(fumbles,playerFumbld,all = TRUE) 
+
+#drop fumId and playid
+fumbles1 <- subset(fumbles1, select = -c(fumId,playId))
+
+# then drop duplicates and merge
+fumbles <-  fumbles1[!duplicated(fumbles1), ]
+merged <- merge(merged, fumbles,all.x = TRUE)
+summary(merged)
+#note 1892  NAs in '#Fumbles' - this after joining to merged. These NAs represent players who have never fumbled the football - replace NAs with 0
+merged[is.na(merged)] <- 0
+summary(merged)
+#now no NAs
+#-------------------------------
+
+```
+
+
+```{r}
+
+#fumblForced
+
+colnames(fumblForced)
+
+#reduce features
+fumblForced <- subset(fumblForced, select = c(fumForcedId,playId,playerId))
+
+summary(fumblForced)
+str(fumblForced)
+
+#note 1 playerId NAs - no way of knowing this data therefore choose to remove this rows 
+fumblForced <- subset(fumblForced, playerId!=0)
+
+#count number of fumbles forced  by each player
+playerForcedFumbl <- table(fumblForced$playerId)
+playerForcedFumbl <-  as.data.frame(playerForcedFumbl)
+
+names(playerForcedFumbl)[1] <-  'playerId'
+names(playerForcedFumbl)[2] <- '#forcedFumbles'
+
+# merge playerForcedFumbl with merged
+
+#make playerId of type int on playerForcedFumbl DF (currently factor)
+playerForcedFumbl$playerId <- as.character(playerForcedFumbl$playerId)
+playerForcedFumbl$playerId <- as.integer(playerForcedFumbl$playerId)
+merged <- merged %>% left_join(playerForcedFumbl, by=c('playerId'))
+str(merged)
+summary(merged)
+# 1860   NAs in '#forcedFumbles' - informing of the players who never forced a fumble
+#replace NAs with 0
+merged[is.na(merged)] <- 0
+summary(merged)
+#now no NAs
+#-------------------------------
+
+```
+
+```{r}
+
+#interceptions
+
+colnames(interceptions) 
+
+#reduce features
+interceptions <- subset(interceptions, select = c(interceptionId,playId,playerId,intYards,intTd))
+
+#count how many interceptions performed by each player
+numInterceptions <- table(interceptions$playerId)
+numInterceptions<-  as.data.frame(numInterceptions)
+
+names(numInterceptions)[1] <-  'playerId'
+names(numInterceptions)[2] <- 'NumInterceptions'
+summary(numInterceptions)
+
+#merge NumInterceptions
+#first change dataType of playerId
+numInterceptions$playerId <- as.character(numInterceptions$playerId)
+numInterceptions$playerId <- as.integer(numInterceptions$playerId)
+
+merged <- merged %>% left_join(numInterceptions, by=c('playerId'))
+
+summary(merged)
+
+#2118  NAs in 'NumInterceptions ' - informing of the players who never intercepted a ball
+#replace NAs with 0
+
+merged[is.na(merged)] <- 0
+summary(merged)
+dim(merged)
+#now no NAs
+
+#next is to sum the total yards returned following interception (for each player)
+
+#sum  interception yards performed by each player
+intYards <- aggregate(intYards~playerId,interceptions,sum)
+names(intYards)[2] <- 'totalInterceptedYards'
+
+#next merge 'totalInterceptedYards' with merged
+merged <- merged %>% left_join(intYards, by=c('playerId'))
+
+#next is to sum the total interception returned for touchdowns (for each player)
+#sum  interception yards performed by each player
+tdInterception <- aggregate(intTd~playerId,interceptions,sum)
+names(tdInterception)[2] <- 'TouchdownInterceptions'
+
+#next merge 'TouchdownInterceptions' with merged
+merged <- merged %>% left_join(tdInterception, by=c('playerId'))
+
+summary(merged)
+
+#2118  NAs in 'totalInterceptedYards' and 'TouchdownInterceptions ' - infomring of the players who never scored a touchdown from an interception
+#replace NAs with 0
+
+merged[is.na(merged)] <- 0
+summary(merged)
+
+#now no NAs
+
+#----------------------------------------------
+
+
+```
+
+
+
+```{r}
+
+#----------------------------------
+
+#kickReturns
+
+summary(kickReturns)
+
+# 25790  NAs in  kickRetTd
+#remove cols with more than 50% NAs
+kickReturns <- kickReturns[, which(colMeans(!is.na(kickReturns)) > 0.5)]
+
+colnames(kickReturns)
+
+#reduce features
+kickReturns <- subset(kickReturns, select = c(kickRetId,playId,playerId,kickRetYds))
+
+#count how many KickReturns performed by each player
+returnedKicks <- table(kickReturns$playerId)
+returnedKicks<-  as.data.frame(returnedKicks)
+
+names(returnedKicks)[1] <-  'playerId'
+names(returnedKicks)[2] <- 'NumKickReturns'
+
+summary(returnedKicks)
+# Max NumKickReturn = 797 - seems high considering mean is 51.8. Lets explore this closer
+#lets remove any duplicate rows for this player in kickReturns
+kickReturns <-  kickReturns %>% distinct(kickRetId, .keep_all = TRUE)
+summary(kickReturns)
+
+#Once again, count how many KickReturns performed by each player
+returnedKicks <- table(kickReturns$playerId)
+returnedKicks<-  as.data.frame(returnedKicks)
+
+names(returnedKicks)[1] <-  'playerId'
+names(returnedKicks)[2] <- 'NumKickReturns'
+summary(returnedKicks)
+# Max NumKickReturn = 180.00 
+
+#next merge 'returnedKicks' with merged
+#first change dataType of playerId
+returnedKicks$playerId <- as.character(returnedKicks$playerId)
+returnedKicks$playerId <- as.integer(returnedKicks$playerId)
+merged <- merged %>% left_join(returnedKicks, by=c('playerId'))
+
+summary(merged)
+# NumKickReturns has 2202 NAs - players who never returned a kick
+# change all NAs to 0
+merged[is.na(merged)] <- 0
+summary(merged)
+#now no NAs
+
+#next is to sum the total yards returned on a kickReturn (for each player)
+
+#sum  kickRetYds  performed by each player
+returnYds <- aggregate(kickRetYds~playerId,kickReturns,sum)
+names(returnYds)[2] <- 'KickReturnedYards'
+
+#next merge 'returnYds' with merged
+merged <- merged %>% left_join(returnYds, by=c('playerId'))
+
+summary(merged)
+# Again - we have 2202 NAs - accounting for the players who never returned a kick
+# change all NAs to 0
+merged[is.na(merged)] <- 0
+summary(merged)
+dim(merged)
+#now no NAs
+
+#----------------------------------
+
+```
+
+
+```{r}
+
+#---------------------------------------
+#kicks
+
+
+str(kicks)
+summary(kicks)
+
+
+#identify if there are any NA values and Identify their locations
+sum(is.na(kicks))
+# 249 NA values
+colSums(is.na(kicks))
+#kickLength    has 140 NAs
+#kickNetYds      has 109 NAs
+
+#install MICE
+
+md.pattern(kicks)
+
+#visualise missing data
+
+mice_plot <- aggr(kicks, col=c('navyblue','yellow'),
+                    numbers=TRUE, sortVars=TRUE,
+                    labels=names(kicks), cex.axis=.7,
+                    gap=3, ylab=c("Missing data","Pattern"))
+
+
+#impute missing data in cols 11 and 13 using misforrest imputation
+#misforrest does not work on 2 variables
+
+selectedCols <- kicks[11:13]
+
+kicks_imp <- missForest(selectedCols,verbose = TRUE)
+
+## The final results can be accessed directly. The estimated error:
+kicks_imp$OOBerror
+#    NRMSE 
+#0.3405443 
+
+#reduce features
+kicks <- subset(kicks, select = c(kickId,playId,playerId,kickOutcome,kickLength,kickNetYds)) 
+
+#rejoin the imupted dataframe with the kicks DF
+kicks$kickLength <-kicks_imp$ximp$kickLength
+kicks$kickNetYds <-kicks_imp$ximp$kickNetYds
+
+summary(kicks)
+
+#count how many kicks performed by each player
+numKicks <- table(kicks$playerId)
+numKicks<-  as.data.frame(numKicks)
+names(numKicks)[1] <-  'playerId'
+names(numKicks)[2] <- 'NumKicks'
+summary(numKicks)
+
+# Max numKicks - 1337  - seems high considering mean = 281.4
+#lets remove any duplicate rows in kickReturns
+numKicks <-  numKicks %>% distinct(playerId, .keep_all = TRUE)
+summary(numKicks)
+#  Max numKicks still = 1337
+
+
+#change dataType of playerId
+numKicks$playerId <- as.character(numKicks$playerId)
+numKicks$playerId <- as.integer(numKicks$playerId)
+
+
+#merge numKicks feature with merged Df
+merged1 <- merged%>%left_join(numKicks, by=c('playerId'))
+summary(merged1)
+# 2407 NAs in numKicks columns- accounting for the players who never performed a kick
+# change all NAs to 0
+merged1[is.na(merged1)] <- 0
+merged <- merged1
+
+#calculate career total Kick length and  add to merged
+TotKckYds <-aggregate(kickLength~playerId, kicks,sum)
+names(TotKckYds)[2] <-'TotKckYds'
+
+#merge TotKckYds feature with merged Df
+merged1 <- merged%>%left_join(TotKckYds, by=c('playerId'))
+
+summary(merged1)
+# 2407 NAs in TotKckYds columns- accounting for the players who never performed a kick
+# change all NAs to 0
+merged1[is.na(merged1)] <- 0
+summary(merged1)
+merged <- merged1
+
+
+#calculate career total kickNetYds and  add to merged
+kickNetYds <-aggregate(kickNetYds~playerId, kicks,sum)
+names(kickNetYds)[2] <-'kickNetYds'
+
+#merge kickNetYds feature with merged Df
+merged1 <- merged%>%left_join(kickNetYds, by=c('playerId'))
+summary(merged1)
+# 2407 NAs in kickNetYds columns- accounting for the players who never performed a kick
+# change all NAs to 0
+merged1[is.na(merged1)] <- 0
+merged <- merged1
+
+
+#calculate career averageNetKckYds and  add to merged
+averageNetKckYds <-aggregate(kickNetYds~playerId, kicks,mean)
+names(averageNetKckYds)[2] <-'averageNetKckYds'
+
+
+#merge averageNetKckYds feature with merged Df
+merged1 <- merged%>%left_join(averageNetKckYds, by=c('playerId'))
+summary(merged1)
+# 2407 NAs in averageNetKckYds columns- accounting for the players who never performed a kick
+# change all NAs to 0
+merged1[is.na(merged1)] <- 0
+merged <- merged1
+
+sum(is.na(merged))
+#now no NAs
+
+```
+
+
+
+```{r}
+
+#----------------------------------
+
+#passDef
+
+colnames(passDef)
+
+#check for NAs
+sum(is.na(passDef))
+colSums(is.na(passDef))
+# 0 NAs
+
+#count how many passes were defended by each player
+defendedPass <- table(passDef$playerId)
+defendedPass<-  as.data.frame(defendedPass)
+names(defendedPass)[1] <-  'playerId'
+names(defendedPass)[2] <- 'NumPassesDefended'
+summary(defendedPass)
+#max =198, mean = 15.93 - lets remove any duplicated from passDef
+defendedPass <-  defendedPass %>% distinct(playerId, .keep_all = TRUE)
+summary(defendedPass)
+
+#change dataType of playerId
+defendedPass$playerId <- as.character(defendedPass$playerId)
+defendedPass$playerId <- as.integer(defendedPass$playerId)
+
+#join NumPassesDefended column to merged
+merged1 <- merged%>%left_join(defendedPass, by=c('playerId'))
+summary(merged1)
+# Again - we have NAs:
+# 1756 NAs in NumPassesDefended - accounting for the players who never performed a passdefense
+# change all NAs to 0
+merged1[is.na(merged1)] <- 0
+merged <- merged1
+
+sum(is.na(merged))
+#now no NAs
+
+
+```
+
+
+```{r}
+
+#-----------------------------------
+#passer
+
+#Identifies the player credited as the passer on a pass play. 
+
+#check for NAs
+sum(is.na(passer))
+# No NAs
+
+#reduce features
+passer <- subset(passer, select = -c(playId,passId,teamId, passPosition, passDirection,passDepth,passOutcomes,passIntTd,passNull))
+
+colnames(passer)
+
+#calculate career total passesLength and  add to merged
+careerPassLength <-aggregate(passLength~playerId, passer,sum)
+names(careerPassLength)[2] <-'careerPassLength'
+#merge careerPassLength feature with merged Df
+merged <- merged%>%left_join(careerPassLength, by=c('playerId'))
+summary(merged)
+# 2278 NAs in careerPassLength columns- accounting for the players who never passed/threw a ball
+# change all NAs to 0
+merged[is.na(merged)] <- 0
+
+#calculate career total passAttempts and  add to merged
+passAttempts <-aggregate(passAtt~playerId, passer,sum)
+names(passAttempts)[2] <-'passAttempts'
+#merge passAttempts feature with merged Df
+merged <- merged%>%left_join(passAttempts, by=c('playerId'))
+summary(merged)
+# 2278 NAs in passAttempts columns- accounting for the players who never passed/threw a ball
+# change all NAs to 0
+merged[is.na(merged)] <- 0
+
+
+#calculate career total passCompletions and  add to merged
+passCompletions <-aggregate(passComp~playerId, passer,sum)
+names(passCompletions)[2] <-'passCompletions'
+#merge passCompletions feature with merged Df
+merged <- merged%>%left_join(passCompletions, by=c('playerId'))
+summary(merged)
+# 2278 NAs in passCompletions columns- accounting for the players who never passed/threw a ball
+# change all NAs to 0
+merged[is.na(merged)] <- 0
+
+#use passAttempted and passCompletions to calculate % pass completed /of those attempted
+merged$completionPercentage <- ((merged$passComp/merged$passAttempts)*100)
+summary(merged)
+
+# 2279 NAs in completionPercentage columns- accounting for the players who never passed/threw a ball
+# change all NAs to 0
+merged[is.na(merged)] <- 0
+
+#calculate career total TdPasses and  add to merged
+TdPasses <-aggregate(passTd~playerId, passer,sum)
+names(TdPasses)[2] <-'TdPasses'
+#merge TdPasses feature with merged Df
+merged<- merged%>%left_join(TdPasses, by=c('playerId'))
+summary(merged)
+# 2278 NAs in TdPasses columns- accounting for the players who never passed/threw a ball
+# change all NAs to 0
+merged[is.na(merged)] <- 0
+
+#calculate career total Pass interceptions and  add to merged
+intPasses <-aggregate(passInt~playerId, passer,sum)
+names(intPasses)[2] <-'intPasses'
+summary(intPasses)
+#max = 105 - seems high, mean = 9.539 so lets remove duplicates
+intPasses <-  intPasses %>% distinct(playerId, .keep_all = TRUE)
+summary(intPasses)
+#Max int passes still 105
+
+#merge intPasses feature with merged Df
+merged<- merged%>%left_join(intPasses, by=c('playerId'))
+summary(merged)
+# 2278 NAs in intPasses columns- accounting for the players who never passed/threw a ball
+# change all NAs to 0
+merged[is.na(merged)] <- 0
+
+#use passAttempted and intPasses to calculate % passes intercepted /of those thrown
+merged$intPercentage <- ((merged$intPasses/merged$passAttempts)*100)
+summary(merged)
+
+# 2279 NAs in intPercentage columns- accounting for the players who never passed/threw a ball
+# change all NAs to 0
+merged[is.na(merged)] <- 0
+
+#count career total number of times each passer was sacked
+numSacked <-aggregate(passSack~playerId, passer,sum)
+names(numSacked)[2] <-'numSacked'
+summary(numSacked)
+#max = 332.00   - seems high (mean = 27.43), so lets remove duplicates
+numSacked <-  numSacked %>% distinct(playerId, .keep_all = TRUE)
+summary(numSacked)
+#Max int passes still 332
+
+#merge numSacked feature with merged Df
+merged<- merged%>%left_join(numSacked, by=c('playerId'))
+summary(merged)
+
+
+# 2278 NAs in numSacked columns- accounting for the players who never passed/threw a ball or more likley - not 'passers' of the ball
+# change all NAs to 0
+merged[is.na(merged)] <- 0
+
+#use passAttempts and numSacked to calculate % of time a passer was sacked for each possession
+merged$sackPercentage <-format(round(as.numeric((merged$numSacked/merged$passAttempts)*100),2),nsmall=2)
+#change dataType of sackPercentage
+merged$sackPercentage <- as.numeric(merged$sackPercentage)
+summary(merged)
+# 2279 NAs in sackPercentage columns- accounting for the players who never passed/threw a ball or more likley - not 'passers' of the ball
+# change all NAs to 0
+merged[is.na(merged)] <- 0
+
+#count (10yr) career total number of yards lost as a result of sacks for  each passer
+sackYds <-aggregate(passSackYds~playerId, passer,sum)
+names(sackYds)[2] <-'sackYds'
+summary(sackYds)
+#lets remove duplicates
+sackYds <-  sackYds %>% distinct(playerId, .keep_all = TRUE)
+summary(sackYds)
+#merge sackYds feature with merged Df
+merged<- merged%>%left_join(sackYds, by=c('playerId'))
+summary(merged)
+# 2278 NAs in sackYds columns- accounting for the players who never passed/threw a ball or more likley - not 'passers' of the ball
+# change all NAs to 0
+merged[is.na(merged)] <- 0
+
+#use numSacked and sackYds to calculate average yards lost per sack for each  passer.
+merged$averSackYds <- (merged$sackYds/merged$numSacked)
+summary(merged)
+# 2323 NAs in averSackYds columns- accounting for the players who never were sacked - likely not 'passers' of the ball
+# change all NAs to 0
+merged[is.na(merged)] <- 0
+
+#count 10 yr total number of times each passer was 'hit'
+numPasserHit <-aggregate(passHit~playerId, passer,sum)
+names(numPasserHit)[2] <-'numPasserHit'
+summary(numPasserHit)
+#max = 336    - seems high (mean = 30.14), so lets remove duplicates
+numPasserHit <-  numPasserHit %>% distinct(playerId, .keep_all = TRUE)
+summary(numPasserHit)
+#Max int passes still 336
+
+#merge numPasserHit feature with merged Df
+merged<- merged%>%left_join(numPasserHit, by=c('playerId'))
+summary(merged)
+# 2278 NAs in numPasserHit columns- accounting for the players who never were hit - likely not 'passers' of the ball
+# change all NAs to 0
+merged[is.na(merged)] <- 0
+
+summary(merged)
+
+#use numPasserHit  and passAttempts  to calculate percentage that a passer was hit per attempted pass.
+merged$passerHitPercentage <- format(round(as.numeric((merged$numPasserHit/merged$passAttempts)*100),2),nsmall=2)
+#change dataType of passerHitPercentage
+merged$passerHitPercentage <- as.numeric(merged$passerHitPercentage)
+
+# 2279 NAs in passerHitPercentage column  accounting for the players who never passed/threw a ball or more likley - not 'passers' of the ball
+# change all NAs to 0
+merged[is.na(merged)] <- 0
+
+#count 10 yr total number of times each passer had a pass 'defended' by opposition
+numPasserDefended <-aggregate(passDef~playerId, passer,sum)
+names(numPasserDefended)[2] <-'numPasserDefended'
+summary(numPasserDefended)
+#max = 297    - seems high (mean = 24.57), so lets remove duplicates
+numPasserDefended <-  numPasserDefended %>% distinct(playerId, .keep_all = TRUE)
+summary(numPasserDefended)
+#Max int passes still 297
+
+#merge numPasserDefended feature with merged Df
+merged<- merged%>%left_join(numPasserDefended, by=c('playerId'))
+summary(merged)
+# 2278 NAs in numPasserDefended columns- accounting for the players who never passed/threw a ball or more likley - not 'passers' of the ball
+# change all NAs to 0
+merged[is.na(merged)] <- 0
+
+#use passDef  and passAttempts  to calculate percentage of defended passes for each passer
+merged$passDefPercentage <- format(round(as.numeric((merged$numPasserDefended/merged$passAttempts)*100),2),nsmall=2)
+#change dataType of passDefPercentage
+merged$passDefPercentage <- as.numeric(merged$passDefPercentage)
+summary(merged)
+# 2279 NAs in passDefPercentage column- accounting for the players who never passed/threw a ball or more likley - not 'passers' of the ball
+# change all NAs to 0
+merged[is.na(merged)] <- 0
+sum(is.na(merged))
+
+```
+
+
+
+```{r}
+#----------------------------------
+
+#penalties
+summary(penalties)
+#penalty yards - 4 NAs
+dim(penalties)
+
+# lets remove duplicates
+penalties <-  penalties %>% distinct(penaltyId, .keep_all = TRUE)
+summary(penalties)
+#penalty yards - 4 NAs
+#look at these rows
+(NAs <-subset(penalties,is.na(penaltyYds)))
+(NAs)
+str(NAs)
+#lets use penalty description to see if we can determine the penalty yards
+(penYrds <-subset(penalties, penaltyDescrip=='Player Out of Bounds on Kick'))
+summary(penYrds)
+# lets impute the missing data from penYrds ( of each (the same) penalty type ) and then transfer these values to penalties DF
+str(penYrds)
+print(penYrds)
+selectedCols <- c(1:4,7)
+penalties_imp <- missForest(penYrds[selectedCols],verbose = TRUE)
+str(penalties_imp$ximp)
+summary(penalties_imp$ximp)
+penYrds$penaltyYds <- penalties_imp$ximp$penaltyYds
+
+#merge penYrds with penalties based on penaltyId
+
+penYrds <- subset(penYrds,select=c('penaltyId', 'penaltyYds'))
+penalties<- penalties%>%left_join(penYrds, by=c('penaltyId'))
+penalties$penaltyYds.x[is.na(penalties$penaltyYds.x)] <- penalties$penaltyYds.y[is.na(penalties$penaltyYds.x)]
+
+summary(penalties)
+
+penalties <- subset(penalties,select = -c(penaltyYds.y))
+names(penalties)[names(penalties)=='penaltyYds.x'] <- 'penaltyYds'
+summary(penalties)
+#now only 3 NAs
+#repeat above process for remaining NAs
+
+NAs <-subset(penalties,is.na(penaltyYds))
+#lets use penalty description to see if we can determine the penalty yards
+penYrds <-subset(penalties, penaltyDescrip=='Illegal Double-Team Block')
+# lets impute the missing data from penYrds ( of each (the same) penalty type ) and then transfer these values to penalties DF
+selectedCols <- c(1:4,7)
+penalties_imp <- missForest(penYrds[selectedCols],verbose = TRUE)
+penYrds$penaltyYds <- penalties_imp$ximp$penaltyYds
+
+#merge penYrds with penalties based on penaltyId
+penYrds <- subset(penYrds,select=c('penaltyId', 'penaltyYds'))
+penalties<- penalties%>%left_join(penYrds, by=c('penaltyId'))
+penalties$penaltyYds.x[is.na(penalties$penaltyYds.x)] <- penalties$penaltyYds.y[is.na(penalties$penaltyYds.x)]
+
+penalties <- subset(penalties,select = -c(penaltyYds.y))
+names(penalties)[names(penalties)=='penaltyYds.x'] <- 'penaltyYds'
+summary(penalties)
+#now only 1 NA
+#repeat above process for remaining NAs
+
+NAs <-subset(penalties,is.na(penaltyYds))
+#lets use penalty description to see if we can determine the penalty yards
+penYrds <-subset(penalties, penaltyDescrip=='Lowering the Head to Initiate Contact')
+# lets impute the missing data from penYrds ( of each (the same) penalty type ) and then transfer these values to penalties DF
+selectedCols <- c(1:4,7)
+penalties_imp <- missForest(penYrds[selectedCols],verbose = TRUE)
+penYrds$penaltyYds <- penalties_imp$ximp$penaltyYds
+
+#merge penYrds with penalties based on penaltyId
+penYrds <- subset(penYrds,select=c('penaltyId', 'penaltyYds'))
+penalties<- penalties%>%left_join(penYrds, by=c('penaltyId'))
+penalties$penaltyYds.x[is.na(penalties$penaltyYds.x)] <- penalties$penaltyYds.y[is.na(penalties$penaltyYds.x)]
+
+
+penalties <- subset(penalties,select = -c(penaltyYds.y))
+names(penalties)[names(penalties)=='penaltyYds.x'] <- 'penaltyYds'
+summary(penalties)
+# we now have a complte Df - no NAs
+sum(is.na(penalties))
+
+#count 10yr total number of penalties attributed to each player
+numPenalties <- table(penalties$playerId)
+numPenalties<-  as.data.frame(numPenalties)
+summary(numPenalties)
+names(numPenalties)[1] <-  'playerId'
+names(numPenalties)[2] <- '#penaltiesConceded'
+
+numPenalties$playerId <- as.character(numPenalties$playerId)
+numPenalties$playerId <- as.integer(numPenalties$playerId)
+merged <- merged %>% left_join(numPenalties, by=c('playerId'))
+summary(merged)
+# 996 - NAs - in '#penaltiesConceeded' columns- accounting for the players who never conceeded a penalty
+# change all NAs to 0
+merged[is.na(merged)] <- 0
+
+#now sum up the 10yr total penalty yds conceded per player
+penYdsConceded <-aggregate(penaltyYds~playerId, penalties,sum)
+names(penYdsConceded)[2] <-'penYdsConceded'
+summary(penYdsConceded)
+#max = 360   - seems significant (mean = 33.28), so lets remove duplicates
+penYdsConceded <-  penYdsConceded %>% distinct(playerId, .keep_all = TRUE)
+summary(penYdsConceded)
+#min still 360
+
+#merge penYdsConceeded feature with merged Df
+merged<- merged%>%left_join(penYdsConceded, by=c('playerId'))
+summary(merged)
+
+# 996 - NAs - in 'penYdsConceeded ' columns- accounting for the players who never conceeded a penalty therefore never conceeded yardage
+# change all NAs to 0
+merged[is.na(merged)] <- 0
+
+
+#----------------------------------
+
+```
+
+
+```{r}
+
+#----------------------------------
+#qbhits
+
+summary(qbHits)
+#playerId - 4 NAs
+#Lets remove those as to not attribute them to an incorrect player by inputation methods
+qbHits <- na.omit(qbHits)
+
+# lets remove duplicates
+qbHits <-  qbHits %>% distinct(qbHitId, .keep_all = TRUE)
+colnames(qbHits)
+
+
+#count 10yr total number of qbHits attributed to each player
+qbHits <- table(qbHits$playerId)
+qbHits<-  as.data.frame(qbHits)
+names(qbHits)[1] <-  'playerId'
+names(qbHits)[2] <- '#qbHits'
+
+qbHits$playerId <- as.character(qbHits$playerId)
+qbHits$playerId <- as.integer(qbHits$playerId)
+
+#add number of QB hits for each player to merged
+merged <- merged %>% left_join(qbHits, by=c('playerId'))
+summary(merged)
+# 1780 - NAs - in '#qbHits' columns- accounting for the players who never 'hit' a QB
+# change all NAs to 0
+merged[is.na(merged)] <- 0
+
+
+```
+
+
+
+```{r}
+#--------------------------------
+
+#receiver
+
+# lets remove duplicates
+receiver <-  receiver %>% distinct(receiverId, .keep_all = TRUE)
+str(receiver)
+#70985 observations
+
+colnames(receiver)
+
+
+#count 10yr total number of receptions attributed to each player
+numRecep <- table(receiver$playerId)
+numRecep<-  as.data.frame(numRecep)
+names(numRecep)[1] <-  'playerId'
+names(numRecep)[2] <- '#Receptions'
+
+numRecep$playerId <- as.character(numRecep$playerId)
+numRecep$playerId <- as.integer(numRecep$playerId)
+
+#add number of receptions for each player to merged
+merged <- merged %>% left_join(numRecep, by=c('playerId'))
+summary(merged)
+# 1811 - NAs - in '#Receptions' column- accounting for the players who never 'caught' a football pass
+# change all NAs to 0
+merged[is.na(merged)] <- 0
+
+#now sum up the 10yr total receptions yds per player
+recYds <-aggregate(recYards~playerId, receiver,sum)
+names(recYds)[2] <-'receptionYds'
+#merge recYds feature with merged Df
+merged<- merged%>%left_join(recYds, by=c('playerId'))
+summary(merged)
+
+# 1811     - NAs - in 'receptionYds ' columns- accounting for the players who never 'caught' a football pass
+# change all NAs to 0
+merged[is.na(merged)] <- 0
+
+#calculate average yds per reception for each player
+merged$AvYdsPerRec <- merged$receptionYds/merged$`#Receptions`
+
+#now sum up the 10yr total Yards after Catch per player
+recYAC <-aggregate(recYac~playerId, receiver,sum)
+names(recYAC)[2] <-'YardsAfterCatch'
+#merge YardsAfterCatch feature with merged Df
+merged<- merged%>%left_join(recYAC, by=c('playerId'))
+summary(merged)
+# 1811     - NAs - in 'AvYdsPerRec' and 'YardsAfterCatch' column
+# change all NAs to 0
+merged[is.na(merged)] <- 0
+
+#now sum up the 10yr total receptions resulting in 1st down - per player
+rec1Dwn <-aggregate(rec1down~playerId, receiver,sum)
+names(rec1Dwn)[2] <-'recep1stDown'
+summary(rec1Dwn)
+
+#merge recep.1stDown feature with merged Df
+merged<- merged%>%left_join(rec1Dwn, by=c('playerId'))
+summary(merged)
+
+# 1811     - NAs - in 'recep1stDown ' columns- accounting for the players who never 'caught' a football pass
+# change all NAs to 0
+merged[is.na(merged)] <- 0
+
+#now sum up the 10yr total fumbles after catch reception per player
+recFum <-aggregate(recFumble~playerId, receiver,sum)
+names(recFum)[2] <-'recepFumbled'
+#merge recep.Fumbled feature with merged Df
+merged<- merged%>%left_join(recFum, by=c('playerId'))
+summary(merged)
+# 1811     - NAs - in 'recep.Fumbled' columns- accounting for the players who never 'caught/fumbled' a football pass
+# change all NAs to 0
+merged[is.na(merged)] <- 0
+
+#now sum up the 10yr total receptions which were defended per receiver
+recDef <-aggregate(recPassDef~playerId, receiver,sum)
+names(recDef)[2] <-'recepDefended'
+#merge recep.Defended feature with merged Df
+merged<- merged%>%left_join(recDef, by=c('playerId'))
+summary(merged)
+
+# 1811     - NAs - in 'recepDefended' columns
+# change all NAs to 0
+merged[is.na(merged)] <- 0
+
+#now sum up the 10yr total receptions which were intercepted by an opponent per receiver
+recInter <-aggregate(recPassInt~playerId, receiver,sum)
+names(recInter)[2] <-'recepIntercepted'
+#merge recep.Intercepted feature with merged Df
+merged<- merged%>%left_join(recInter, by=c('playerId'))
+summary(merged)
+# 1811     - NAs - in 'recepIntercepted' column
+# change all NAs to 0
+merged[is.na(merged)] <- 0
+
+
+```
+
+
+
+```{r}
+#-------------------------------
+
+# rusher
+
+
+summary(rusher)
+# 23 NA's in rushTD
+
+# lets remove duplicates
+rusher <-  rusher %>% distinct(rushId, .keep_all = TRUE)
+summary(rusher)
+# 8 NAs in rushTd
+
+#look at these rows
+(NAs <-subset(rusher,is.na(rushTd)))
+
+#we can see that 1 'rush' was aborted - so it is safe to assume that these did not result in a TD
+#give all 'aborted' rushes a rushTd value = 0
+rusher$rushTd[rusher$rushType=='aborted'] <-0 
+#look at NAs again
+(NAs <-subset(rusher,is.na(rushTd)))
+str(NAs)
+#now we have 7 NAs
+
+#Now lets look at the data to see what the 'rushEnd' value is for any rushTDs
+(rushTD <- rusher[rusher$rushTd==1,11:12])
+#all TDs have a 'rushEnd' Value of 'in bounds'
+#If we look at NAs df we can see that 2 of the 7 have 'rushEnd' value of 'ran out of bounds' 
+# #give all 'ran out of bounds' rushes a rushTd value = 0
+rusher$rushTd[rusher$rushEnd=='ran out of bounds'] <-0 
+
+#look at NAs again
+(NAs <-subset(rusher,is.na(rushTd)))
+str(NAs)
+#now we have 5 NAs - we appropriately imputed rushTD data to 2 rows
+# we can see that rushYards for 1 row = 0. Therefore we can deduce from this that this was not a TD result 
+rusher$rushTd[rusher$rushYards==0] <-0 
+# now we have 4 NAs for rushTD
+
+# lets impute the missing data for rushTD ( of each (the same) player type (position) )
+TE <- subset(rusher, rushPosition =='TE' )
+
+selectedCols <- c(1:4,9:11,13)
+TE_imp <- missForest(TE[selectedCols],verbose = TRUE)
+TE$rushTd <- TE_imp$ximp$rushTd
+#merge TE with rusher based on rushId
+TE <- subset(TE,select=c('rushId', 'rushTd'))
+rusher<- rusher%>%left_join(TE, by=c('rushId'))
+#get rid of NA by copying from duplicated col
+rusher$rushTd.x[is.na(rusher$rushTd.x)] <- rusher$rushTd.y[is.na(rusher$rushTd.x)]
+#drop duplicated col
+rusher <- subset(rusher,select = -c(rushTd.y))
+#rename col
+names(rusher)[names(rusher)=='rushTd.x'] <- 'rushTd'
+
+#look at NAs again
+(NAs <-subset(rusher,is.na(rushTd)))
+str(NAs)
+# now have 3 NAs
+
+# Lets repeat above steps for RB and Wr positions
+RB <- subset(rusher, rushPosition =='RB' )
+selectedCols <- c(1:4,9:11,13)
+RB_imp <- missForest(RB[selectedCols],verbose = TRUE)
+RB$rushTd <- RB_imp$ximp$rushTd
+
+#merge RB with rusher based on rushId
+RB <- subset(RB,select=c('rushId', 'rushTd'))
+rusher<- rusher%>%left_join(RB, by=c('rushId'))
+rusher$rushTd.x[is.na(rusher$rushTd.x)] <- rusher$rushTd.y[is.na(rusher$rushTd.x)]
+rusher <- subset(rusher,select = -c(rushTd.y))
+names(rusher)[names(rusher)=='rushTd.x'] <- 'rushTd'
+
+#look at NAs again
+(NAs <-subset(rusher,is.na(rushTd)))
+str(NAs)
+# now 1 NA where position is WR
+
+# Lets repeat above steps for WR position
+WR <- subset(rusher, rushPosition =='WR' )
+selectedCols <- c(1:4,9:11,13)
+WR_imp <- missForest(WR[selectedCols],verbose = TRUE)
+WR$rushTd <- WR_imp$ximp$rushTd
+
+#merge WR with rusher based on rushId
+WR <- subset(WR,select=c('rushId', 'rushTd'))
+rusher<- rusher%>%left_join(WR, by=c('rushId'))
+rusher$rushTd.x[is.na(rusher$rushTd.x)] <- rusher$rushTd.y[is.na(rusher$rushTd.x)]
+rusher <- subset(rusher,select = -c(rushTd.y))
+names(rusher)[names(rusher)=='rushTd.x'] <- 'rushTd'
+
+#look at NAs again
+(NAs <-subset(rusher,is.na(rushTd)))
+summary(NAs)
+#  0 NAs
+
+#count 10yr total number of rushes attributed to each player
+numRush <- table(rusher$playerId)
+numRush<-  as.data.frame(numRush)
+names(numRush)[1] <-  'playerId'
+names(numRush)[2] <- '#Rushes'
+numRush$playerId <- as.character(numRush$playerId)
+numRush$playerId <- as.integer(numRush$playerId)
+
+#add number of Rushes for each player to merged
+merged <- merged %>% left_join(numRush, by=c('playerId'))
+summary(merged)
+# 1998     - NAs - in '#Rushes' column- accounting for the players who never 'Rushed' the football
+# change all NAs to 0
+merged[is.na(merged)] <- 0
+
+#now sum up the 10yr total rushing Yds per player
+rushYds <-aggregate(rushYards~playerId, rusher,sum)
+names(rushYds)[2] <-'RushingYds'
+#merge RushingYds feature with merged Df
+merged<- merged%>%left_join(rushYds, by=c('playerId'))
+summary(merged)
+# 1998     - NAs - in 'RushingYds' column- accounting for the players who never 'Rushed' the football
+# change all NAs to 0
+merged[is.na(merged)] <- 0
+
+# calculate yrds per carry (rush) - for each player
+merged$YdsPerCarry <- merged$RushingYds/merged$`#Rushes`
+summary(merged)
+# 1998     - NAs - in 'YdsPerCarry' column- accounting for the players who never 'Rushed' the football
+# change all NAs to 0
+merged[is.na(merged)] <- 0
+
+#now counnt the 10yr total rushingTds per player
+rushTDs <-aggregate(rushTd~playerId, rusher,sum)
+names(rushTDs)[2] <-'RushingTDs'
+#merge RushingTDs feature with merged Df
+merged<- merged%>%left_join(rushTDs, by=c('playerId'))
+summary(merged)
+# 1998     - NAs - in 'RushingTDs' column- accounting for the players who never 'Rushed' the football/ scored a rushing TD
+# change all NAs to 0
+merged[is.na(merged)] <- 0
+
+# calculate TDs per carry (rush) - for each player
+merged$TDsPerCarry <- merged$RushingTDs/merged$`#Rushes`
+summary(merged)
+# 1998     - NAs - in 'TDsPerCarry' column- accounting for the players who never 'Rushed' the football
+# change all NAs to 0
+merged[is.na(merged)] <- 0
+
+```
+
+
+
+```{r}
+#--------------------------------
+
+# sacks
+
+# lets remove duplicates
+sacks <-  sacks %>% distinct(sackId, .keep_all = TRUE)
+
+#count 10yr total number of sacks attributed to each player
+numSacks <- table(sacks$playerId)
+numSacks<-  as.data.frame(numSacks)
+names(numSacks)[1] <-  'playerId'
+names(numSacks)[2] <- '#Sacks'
+numSacks$playerId <- as.character(numSacks$playerId)
+numSacks$playerId <- as.integer(numSacks$playerId)
+#add number of Rushes for each player to merged
+merged <- merged %>% left_join(numSacks, by=c('playerId'))
+summary(merged)
+# 1905     - NAs - in 'No. of Sacks' column- accounting for the players who never performed a Sack
+# change all NAs to 0
+merged[is.na(merged)] <- 0
+
+#now sum up the 10yr total Sacked Yds per player
+sackYards <-aggregate(sackYards~playerId, sacks,sum)
+names(sackYards)[2] <-'sackYards'
+#merge sackYards feature with merged Df
+merged<- merged%>%left_join(sackYards, by=c('playerId'))
+summary(merged)
+# 1905     - NAs - in 'No. of Sacks' column- accounting for the players who never performed a Sack
+# change all NAs to 0
+merged[is.na(merged)] <- 0
+
+colnames(merged)
+
+```
+
+
+
+```{r}
+#------------------------------
+
+
+#tackles
+summary(tackles)
+# 28947 NA's in tackleYdsScrim column
+
+# lets remove duplicates
+tackles <-  tackles %>% distinct(tackleId, .keep_all = TRUE)
+summary(tackles)
+# 10939 NA's in tackleYdsScrim column 
+#total of 191964 observations
+# % of NAs in this col = 
+(10939/nrow(tackles))*100
+# = [1] 7.653825 %
+
+#count 10yr total number of tackles attributed to each player
+numTackles <- table(tackles$playerId)
+numTackles<-  as.data.frame(numTackles)
+names(numTackles)[1] <-  'playerId'
+names(numTackles)[2] <- '#Tackles'
+numTackles$playerId <- as.character(numTackles$playerId)
+numTackles$playerId <- as.integer(numTackles$playerId)
+
+#add number of tackles for each player to merged
+merged <- merged %>% left_join(numTackles, by=c('playerId'))
+summary(merged)
+# 918     - NAs - in '#Tackles' column- accounting for the players who never performed a tackle
+# change all NAs to 0
+merged[is.na(merged)] <- 0
+
+#now sum up the 10yr total tackleYds from line of scrimmage per player
+tackleYds <-aggregate(tackleYdsScrim~playerId, tackles,sum)
+names(tackleYds)[2] <-'TackleYds(fromScrimmage)'
+#merge tackleYds feature with merged Df
+merged<- merged%>%left_join(tackleYds, by=c('playerId'))
+summary(merged)
+# 1092     - NAs - in 'TackleYds(fromScrimmage)' column
+#lets make all NAs in TackleYds(fromScrimmage) = 0, where No. Of tackles = 0 
+merged$`TackleYds(fromScrimmage)`[merged$`#Tackles` ==0] <- 0
+summary(merged)
+#now we only have 174 NAs in TackleYds(fromScrimmage)
+
+# we can impute these with misforrest
+#select those cols considered most relevant to a defensive player
+dim(merged)
+(as.data.frame(summary(merged)))
+selectedCols <- c(64:66)
+merged_imp <- missForest(merged[selectedCols],verbose = TRUE)
+merged$`TackleYds(fromScrimmage)` <- merged_imp$ximp$`TackleYds(fromScrimmage)`
+
+#calculate average tackle yds from line of scrimmage
+merged$`AvTackleYds(fromScrimmage)` <- merged$`TackleYds(fromScrimmage)`/merged$`#Tackles`
+
+#drop TackleYds(fromScrimmage) col
+merged <- subset(merged, select =-c (`TackleYds(fromScrimmage)`))
+
+summary(merged)
+# 918 NAs - 
+# change all NAs to 0
+merged[is.na(merged)] <- 0
+# now we have a complete dataframe - no NAs
+
+
+```
+
+```{r}
+dim(merged)
+# 2440   66
+colnames(merged)
+
+```
+
+
+
+```{r}
+
+
+#we are going to engineer our output variables based on the career stats - cols 1 -> 18
+
+#lets invert the scores for features where a lower sccore is advantagous/desireable for example:
+# 1: 'No. of penalties conceded' - Fewer penalties conceded is desirable
+# 2: 'penYdsConceeded'
+# 3: 'AvTackleYds(fromScrimmage)'
+
+str(merged)
+
+summary(merged)
+merged$`#Fumbles` <- as.integer(merged$`#Fumbles`*-1) 
+merged$`intPasses` <- as.integer(merged$`intPasses`*-1) 
+merged$intPercentage <- as.integer(merged$intPercentage*-1) 
+merged$numSacked <- as.integer(merged$numSacked*-1) 
+merged$sackPercentage <- as.numeric(merged$sackPercentage*-1) 
+merged$numPasserHit <- as.integer(merged$numPasserHit*-1) 
+merged$passerHitPercentage <- as.integer(merged$passerHitPercentage*-1) 
+merged$numPasserDefended <- as.integer(merged$numPasserDefended*-1) 
+merged$passDefPercentage <- as.numeric(merged$passDefPercentage*-1) 
+merged$`#penaltiesConceded`<- as.integer(merged$`#penaltiesConceded`*-1) 
+merged$`penYdsConceded`<- as.integer(merged$`penYdsConceded`*-1) 
+merged$recepFumbled <- as.integer(merged$recepFumbled*-1)
+merged$recepDefended <- as.integer(merged$recepDefended*-1)
+merged$recepIntercepted<- as.integer(merged$recepIntercepted*-1)
+merged$sackYards <- as.integer(merged$sackYards*-1)
+merged$`AvTackleYds(fromScrimmage)` <- as.integer(merged$`AvTackleYds(fromScrimmage)`*-1)
+
+sum(is.na(merged))
+colSums(is.na(merged))
+
+```
+
+
+
+```{R}
+ # now let's split the dataframe into seperate dataframes specific to each position
+
+positions <- split(merged, f=merged$combinePosition)
+
+centre <- positions$C
+cornerBack <- positions$CB
+defensiveBack <- positions$DB
+defensiveEnd <- positions$DE
+defensiveLineman <- positions$DL
+defensiveTackle <-  positions$DT
+edge <- positions$EDG
+fullBack <- positions$FB
+freeSafety <- positions$FS
+insideLineBacker <- positions$ILB
+kicker <- positions$K
+lineBacker <- positions$LB
+longSnapper <- positions$LS
+noseTackle <- positions$NT
+offensiveGuard <- positions$OG
+offensieLinesman <- positions$OL
+outsideLB <- positions$OLB
+offensiveTackle <- positions$OT
+punter <- positions$P
+placeKicker <- positions$PK
+quarterBack <- positions$QB
+runningBack <- positions$RB
+safety <-  positions$S
+strongSafety <- positions$SS
+tightEnd <- positions$TE
+wideReceiver <- positions$WR
+```
+
+
+```{r}
+# function to remove cols
+
+#lets remove all cols from each of the dataframes where 1st quartile and 3rd quartile are equal demosntrating  no spread of data and therefore will be unable to infer much information from these features
+#lets create a user defined function to iterate through each DF
+removeCols <- function(dataset){
+numcols <- length(dataset)
+i <- 17
+while(i<=numcols){
+quant <- quantile(dataset[,i])
+  if(quant[2]==quant[4]){
+    dataset <- subset(dataset, select = -c(i))
+    numcols <- numcols-1
+  }#end if
+  else{
+    i <- i+1
+    }#end else
+}#end while)
+return(dataset)
+} # end removeCols ()
+
+```
+
+
+```{r}
+#call removeCols function on each DF
+
+defensiveBack <-  removeCols(defensiveBack)
+defensiveEnd <-  removeCols(defensiveEnd)
+defensiveLineman <-  removeCols(defensiveLineman)
+defensiveTackle <-  removeCols(defensiveTackle)
+centre <-  removeCols(centre)
+edge <-  removeCols(edge)
+fullBack <-  removeCols(fullBack)
+insideLineBacker <-  removeCols(insideLineBacker)
+kicker <-  removeCols(kicker)
+lineBacker <-  removeCols(lineBacker)
+longSnapper <-  removeCols(noseTackle)
+offensiveGuard <-  removeCols(offensiveGuard)
+offensieLinesman <-  removeCols(offensieLinesman)
+offensiveTackle <-  removeCols(offensiveTackle)
+outsideLB <-  removeCols(outsideLB)
+punter <-  removeCols(punter)
+placeKicker <-  removeCols(placeKicker)
+quarterBack <-  removeCols(quarterBack)
+runningBack <-  removeCols(runningBack)
+safety <-  removeCols(safety)
+strongSafety <-  removeCols(strongSafety)
+tightEnd <-  removeCols(tightEnd)
+wideReceiver <-  removeCols(wideReceiver)
+
+```
+
+
+
+
+
+
+```{r}
+
+#lets classify Above Average, average or below average for each career stat based on the 1st and 3rd quartile of each.
+#first lets write a function to iterate through each DF which can be passed as an argument
+
+# note col 18 in each DF is the last of the independent variables, therefore the dependent variables are based on Cols 19+ 
+
+categorise <- function(dataset){
+  rowNumber <- nrow(dataset)
+  i <- 19
+  (numcols <- length(dataset))
+  while(i<=numcols){
+    row <- 1
+    quant <- quantile(dataset[,i])
+    while (row<=rowNumber) {
+      if (dataset[row,i]==quant[2]){
+    dataset[row,i]<- 'Below Average'
+  }# end if
+else if(dataset[row,i]>=quant[4]){
+  dataset[row,i]<- 'Above Average'
+  }#end else if
+  else{
+     dataset[row,i]<- 'Average'
+  }#end else
+  row <- row+1
+}# end while
+i <- i+1
+}# end while
+  return(dataset)
+}#end categorize() 
+
+```
+
+
+```{r}
+
+#now pass each DF to categorise function
+
+
+defensiveBack <-  categorise(defensiveBack)
+defensiveEnd <-  categorise(defensiveEnd)
+defensiveLineman <-  categorise(defensiveLineman)
+defensiveTackle <-  categorise(defensiveTackle)
+centre <-  categorise(centre)
+edge <-  categorise(edge)
+fullBack <-  categorise(fullBack)
+insideLineBacker <-  categorise(insideLineBacker)
+kicker <-  categorise(kicker)
+lineBacker <-  categorise(lineBacker)
+longSnapper <-  categorise(noseTackle)
+offensiveGuard <-  categorise(offensiveGuard)
+offensieLinesman <-  categorise(offensieLinesman)
+offensiveTackle <-  categorise(offensiveTackle)
+outsideLB <-  categorise(outsideLB)
+punter <-  categorise(punter)
+placeKicker <-  categorise(placeKicker)
+quarterBack <-  categorise(quarterBack)
+runningBack <-  categorise(runningBack)
+safety <-  categorise(safety)
+strongSafety <-  categorise(strongSafety)
+tightEnd <-  categorise(tightEnd)
+wideReceiver <-  categorise(wideReceiver)
+
+
+
+```
+We now have 22 similar dataframes grouped by playing position.
+For the remainder of the project we will explore only certain playing positions. They are the dataframes relating to the 2 largest data frames:
+Wide receiver
+Running Back
+
+
+```{r}
+# Let's now convert the target varibales into a numeric data type for ease of and more purposeful quantitative analysis of the data:
+#Lets allocate:
+#below average a score of 1
+# average a score of 2
+# above average a score of 3
+
+#lets create 2 functions to perform this task as the first function converts to '1', '2', '3' i.e chr 
+
+categoriseNumericPt1 <- function(dataset){
+  rowNumber <- nrow(dataset)
+  i <- 18
+  (numcols <- length(dataset))
+  while(i<=numcols){
+    row <- 1
+    while (row<=rowNumber) {
+      if (dataset[row,i]=='Below Average'){
+    dataset[row,i]<- 1
+  }# end if
+else if(dataset[row,i]=='Average'){
+  dataset[row,i]<-2
+  }#end else if
+else{
+     dataset[row,i]<-3
+  }#end else
+  row <- row+1
+}# end while
+i <- i+1
+}# end while
+return(dataset)
+}#end categoriseNumericPt1()
+
+
+#lets convert the scores 1,2,3 into numeric
+
+categoriseNumericPt2 <- function(dataset){
+  i <- 18
+  (numcols <- length(dataset))
+  while(i<=numcols){
+    dataset[,i] <-  as.numeric(dataset[,i])
+  i <- i+1
+}# end while
+return(dataset)
+}#end categoriseNumericPt2() 
+
+```
+
+
+```{r}
+#let's call fucntion categoriseNumericPt1 and categoriseNumericPt2 on Qb/RB/widereceiver/Linebacker and Kicker dataframes
+
+
+
+runningBack <-  categoriseNumericPt1(runningBack)
+runningBack <-  categoriseNumericPt2(runningBack)
+wideReceiver <-  categoriseNumericPt1(wideReceiver)
+wideReceiver <-  categoriseNumericPt2(wideReceiver)
+
+str(wideReceiver)
+
+```
+
+
+
+```{r}
+
+
+
+#now lets total up each of the scores for the output data and quantify their score as an average of their total score
+
+
+
+#create a function to calculate each players career success
+success <- function(dataset){
+dataset$careerSuccess <- as.numeric(rowSums(dataset[,c(19:length(dataset))]))/(ncol(dataset[,c(19:length(dataset))]))
+return(dataset)
+}#end success()
+
+# call success function on all dataframes
+
+runningBack <-  success(runningBack)
+wideReceiver <-  success(wideReceiver)
+
+
+# #create a function to drop cols 18 -> length(datframe)-1, that is the variables which the output career success has been calculated on
+dropOutputVars <- function(dataset){
+  dataset <- subset(dataset,select = -c(18:(length(dataset)-1)))
+  return(dataset)
+}# end dropOutputs
+
+# call dropOutputVars function on all dataframes
+runningBack <-  dropOutputVars(runningBack)
+wideReceiver <-  dropOutputVars(wideReceiver)
+
+
+#lets create a function for iterate through each row/player for each dataframe and categorise level of career success
+
+categoriseCareerSuccess <- function(dataset){
+  rowNumber <- nrow(dataset)
+  i <- length(dataset)
+  row <- 1
+  quant <- quantile(dataset[,i])
+  while (row<=rowNumber) {
+    if (dataset[row,i]==quant[2]){
+    dataset[row,i]<- 'Below Average'
+  }# end if
+else if(dataset[row,i]>=quant[4]){
+  dataset[row,i]<- 'Above Average'
+  }#end else if
+  else{
+     dataset[row,i]<- 'Average'
+  }#end else
+  row <- row+1
+}# end while
+return(dataset)
+}#end categorize()
+```
+
+
+```{r}
+
+
+#lets call this function on  dataframes 
+
+runningBack <-  categoriseCareerSuccess(runningBack)
+wideReceiver <-  categoriseCareerSuccess(wideReceiver)
+
+```
+
+
+```{r}
+
+#finally, lets covert to numeric, the CareerSuccess variable
+
+finaliseSuccessPt1 <- function(dataset){
+  rowNumber <- nrow(dataset)
+  i <- length(dataset)
+  #(numcols <- length(dataset))
+  #while(i<=numcols){
+  row <- 1
+  while (row<=rowNumber) {
+    if (dataset[row,i]=='Below Average'){
+    dataset[row,i]<- 1
+  }# end if
+else if(dataset[row,i]=='Average'){
+  dataset[row,i]<-2
+  }#end else if
+else{
+     dataset[row,i]<-3
+  }#end else
+  row <- row+1
+}# end while
+return(dataset)
+}#end categoriseNumericPt1()
+
+
+#lets convert the scores 1,2,3 into numeric
+
+finaliseSuccessPt2 <- function(dataset){
+ dataset$careerSuccess <- as.numeric(dataset$careerSuccess)
+return(dataset)
+}#end categoriseNumericPt2() 
+
+
+
+```
+
+```{r}
+
+#lets call the finaliseSuccess functions on dataframes 
+
+head(runningBack)
+
+runningBack <-  finaliseSuccessPt1(runningBack)
+runningBack <-  finaliseSuccessPt2(runningBack)
+wideReceiver <-  finaliseSuccessPt1(wideReceiver)
+wideReceiver <-  finaliseSuccessPt2(wideReceiver)
+
+```
+
+```{r}
+
+
+# Lets look closer the largest Dataset (wide receiver) 
+
+colnames(wideReceiver)
+
+#remove irrelevant col names
+removeCols <- c(1,2,3,4,7,8,9,10)
+wideReceiver <- subset(wideReceiver, select = -removeCols)
+
+```
+
+```{r}
+
+
+#lets examine the unscaled values for the continuous variables for distribution/skwness. 
+
+#combineHeight
+(height_Skew <- skewness(wideReceiver$combineHeight))
+# -0.2075714 skewness between -0.5 and 0.5 suggests that height data comes from an approximately symmetrical population
+
+# we can visualise this in a histogram and box plots
+#density histogram - Height - Close to Normal Distribution
+(height_density <- ggplot(wideReceiver, aes(x=combineHeight, y=..density..))+
+  geom_density(size=0.7, color='red', adjust=1.5)+
+  geom_histogram(binwidth = 1.1))
+ggsave(height_density, filename = 'WideReceiverHeight Density histogram.png')
+
+#A boxplot displaying the spread of height
+(height_box <- ggplot(wideReceiver,aes("",combineHeight))+geom_boxplot()+coord_flip()+scale_x_discrete())
+ggsave(height_box, filename = 'WideReciever_height Box_plot.png')
+
+```
+
+```{r}
+#combineWeight
+(weight_Skew <- skewness(wideReceiver$combineWeight))
+# 0.01544836 skewness between -0.5 and 0.5 suggests that weight data comes from an approximately symmetrical population
+
+# we can visualise this in a histogram and box plots
+
+#density histogram - weight - Close to Normal Distribution
+(Weight_density <- ggplot(wideReceiver, aes(x=combineWeight, y=..density..))+
+  geom_density(size=0.7, color='red', adjust=1.5)+
+  geom_histogram(binwidth = 5))
+ggsave(Weight_density, filename = 'WidereceiverWeight Density histogram.png')
+
+#A boxplot displaying the spread of weight
+#visualise the spread of Age in a box plot
+(weight_box <- ggplot(wideReceiver,aes("",combineWeight))+geom_boxplot()+coord_flip()+scale_x_discrete())
+ggsave(weight_box, filename = 'WideReciver_Weight Box_plot.png')
+
+```
+
+
+```{r}
+#ageAtDraft
+(Age_Skew <- skewness(wideReceiver$ageAtDraft))
+# 0.04811054 (between 0 and 0.5)  = suggests age comes from a normally distributed population
+
+# we can visualise this in a histogram and box plots
+
+#density histogram - AGE - Close to Normal Distribution
+(age_density <- ggplot(wideReceiver, aes(x=ageAtDraft, y=..density..))+
+  geom_density(size=0.7, color='red', adjust=1.5)+
+  geom_histogram(binwidth = 0.8))
+ggsave(age_density, filename = 'WideReceiverAge Density histogram.png')
+
+#A boxplot displaying the spread of Age.
+#visualise the spread of Age in a box plot
+(age_box <- ggplot(wideReceiver,aes("",ageAtDraft))+geom_boxplot()+coord_flip()+scale_x_discrete())
+ggsave(age_box, filename = 'WideReciever_Age Box_plot.png')
+
+
+
+```
+
+
+```{r}
+
+
+# combine40yd
+
+(fortyYd_Skew <- skewness(wideReceiver$combine40yd))
+# 0.1746955 (between 0 and 0.5)  = suggests 40Yd dash data comes from a normally distributed population
+
+# we can visualise this in a histogram and box plots
+
+#density histogram - combine40yd - Close to Normal Distribution
+(fortyYd_density <- ggplot(wideReceiver, aes(x=combine40yd, y=..density..))+
+  geom_density(size=0.7, color='red', adjust=1.5)+
+  geom_histogram(binwidth = 0.08))
+ggsave(age_density, filename = 'WR 40Yd score Density histogram.png')
+
+#A boxplot displaying the spread of combine40yd
+#visualise the spread of combine40yd in a box plot
+(fortyYd_box <- ggplot(wideReceiver,aes("",combine40yd))+geom_boxplot()+coord_flip()+scale_x_discrete())
+ggsave(fortyYd_box, filename = 'WR40Yd Box_plot.png')
+
+```
+
+```{r}
+
+# combineVert
+
+(vert_Skew <- skewness(wideReceiver$combineVert))
+# 0.3078435 (between 0 and 0.5)  = suggests vertical data comes from a normally distributed population
+
+
+#density histogram - combine40yd - Close to Normal Distribution
+(vert_density <- ggplot(wideReceiver, aes(x=combineVert, y=..density..))+
+  geom_density(size=0.7, color='red', adjust=1.5)+
+  geom_histogram(binwidth = 1))
+ggsave(vert_density, filename = 'WR Vert score Density histogram.png')
+
+#A boxplot displaying the spread of combineVert
+#visualise the spread of combineVert in a box plot
+(vert_box <- ggplot(wideReceiver,aes("",combineVert))+geom_boxplot()+coord_flip()+scale_x_discrete())
+ggsave(vert_box, filename = 'WRVert Box_plot.png')
+
+```
+
+```{r}
+# combineBench
+
+(bench_Skew <- skewness(wideReceiver$combineBench))
+# 0.1005539 (between 0 and 0.5)  = suggests bench comes from a normally distributed population
+
+#density histogram - combine40yd - Close to Normal Distribution
+(bench_density <- ggplot(wideReceiver, aes(x=combineBench, y=..density..))+
+  geom_density(size=0.7, color='red', adjust=1.5)+
+  geom_histogram(binwidth = 2))
+ggsave(bench_density, filename = 'WRBench score Density histogram.png')
+
+#A boxplot displaying the spread of combineBench
+#visualise the spread of combineBench in a box plot
+(bench_box <- ggplot(wideReceiver,aes("",combineBench))+geom_boxplot()+coord_flip()+scale_x_discrete())
+ggsave(bench_box, filename = 'WRBench Box_plot.png')
+
+```
+
+```{r}
+
+
+# combineShuttle
+
+(shuttle_Skew <- skewness(wideReceiver$combineShuttle))
+# 0.6264696 (not between 0 and 0.5)  = suggests shuttle data does not come from a normally distributed population
+#+ve right skew
+#lets look at this further
+
+#use Shapiro-Wilks function to quantify a p.value and indicate how closely (or not) the data is to being Normally distributed
+result <- shapiro.test(wideReceiver$combineShuttle)
+result$p.value
+# p-value = 8.435009e-07 //  p.value<0.05 is indication that the data does not come from a normally distributed sample.
+
+#density histogram - combineShuttle
+(shuttle_density <- ggplot(wideReceiver, aes(x=combineShuttle, y=..density..))+
+  geom_density(size=0.7, color='red', adjust=1.5)+
+  geom_histogram(binwidth = .08))
+ggsave(shuttle_density, filename = 'WRShuttle score Density histogram.png')
+
+#A boxplot displaying the spread of combineShuttle
+#visualise the spread of combineShuttle in a box plot
+(shuttle_box <- ggplot(wideReceiver,aes("",combineShuttle))+geom_boxplot()+coord_flip()+scale_x_discrete())
+ggsave(shuttle_box, filename = 'WRShuttle Box_plot.png')
+
+# 1 high outlier @ 5.01
+
+#--------------------------------
+
+# lets perform a power transformation on the shuttle data
+
+# perform power transformation
+#find an appropriate lambda value to use to transform values in shuttle variable
+#BoxCox plot
+
+par(mfrow = c(1,1))
+bcPlot <- boxcox(wideReceiver$combineShuttle~1,plotit=TRUE, lambda=seq(-5,2.5, 1))
+
+# Lambda value approx -2.5
+
+#perform the power transformation on combineShuttle by raising the values by the power -2.5
+wideReceiver$combineShuttle <-  wideReceiver$combineShuttle^(-2.5)
+
+#3. Obtain density plot, boxplot, and normal probability plot to check the effectiveness of data transformation.
+hist(wideReceiver$combineShuttle,freq=FALSE,main="Density Plot of Shuttle, lambda=-2.5",xlab="Shuttle^(-2.5)")
+lines(density(wideReceiver$combineShuttle))
+boxplot(wideReceiver$combineShuttle,main="Shuttle, lambda=-2.5",ylab="Shuttle^(-2.5)")
+qqnorm(wideReceiver$combineShuttle,main="Normal Plot, lambda=-2.5",ylab="Shuttle^(-2.5)")
+qqline(wideReceiver$combineShuttle)
+
+#----
+#transformed shuttle data
+
+#use Shapiro-Wilks function to quantify a p.value and indicate how closely (or not) the data is to being Normally distributed
+result <- shapiro.test(wideReceiver$combineShuttle)
+result$p.value
+# p-value = 0.0007726561//  p.value<0.05 is indication that the transformd shuttle data does now come from a normally distributed sample.
+
+
+```
+
+```{r}
+
+# combineBroad
+
+(broad_Skew <- skewness(wideReceiver$combineBroad))
+# 0.6096528 (not between 0 and 0.5)  = suggests broad jump data does not come from a normally distributed population
+#+ve right skew
+#lets look at this further
+
+#use Shapiro-Wilks function to quantify a p.value and indicate how closely (or not) the data is to being Normally distributed
+result <- shapiro.test(wideReceiver$combineBroad)
+result$p.value
+# p-value = 4.000413e-06//  p.value<0.05 is indication that the data does not come from a normally distributed sample.
+
+# we can visualise this in a histogram and box plots
+#density histogram - combineBroad
+(broad_density <- ggplot(wideReceiver, aes(x=combineBroad, y=..density..))+
+  geom_density(size=0.7, color='red', adjust=2)+
+  geom_histogram(binwidth = 2))
+ggsave(broad_density, filename = 'Broad score Density histogram.png')
+
+#A boxplot displaying the spread of combineBroad
+#visualise the spread of combineBroad in a box plot
+(broad_box <- ggplot(wideReceiver,aes("",combineBroad))+geom_boxplot()+coord_flip()+scale_x_discrete())
+ggsave(broad_box, filename = 'Broad Box_plot.png')
+
+#--------------------------------
+
+# lets perform a power transformation on the Broad Jump data
+
+# perform power transformation
+#find an appropriate lambda value to use to transform values in broad variable
+#BoxCox plot
+
+par(mfrow = c(1,1))
+boxcox(wideReceiver$combineBroad~1,plotit=TRUE, lambda=seq(-5,2.5, 1))
+
+# Lambda value approx -3
+
+#perform the power transformation on combineBroad by raising the values by the power -3
+wideReceiver$combineBroad <-  wideReceiver$combineBroad^(-3)
+
+#3. Obtain density plot, boxplot, and normal probability plot to check the effectiveness of data transformation.
+
+hist(wideReceiver$combineBroad,freq=FALSE,main="Density Plot of Broad Jump, lambda=-3",xlab="Broad Jump^(-3)")
+lines(density(wideReceiver$combineBroad))
+boxplot(wideReceiver$combineBroad,main="Broad Jump, lambda=-3",ylab="Broad Jump^(-3)")
+qqnorm(wideReceiver$combineBroad,main="Normal Plot, lambda=-3",ylab="Broad Jump^(-3)")
+qqline(wideReceiver$combineBroad)
+
+#----
+#transformed Broad jump data
+
+#use Shapiro-Wilks function to quantify a p.value and indicate how closely (or not) the data is to being Normally distributed
+result <- shapiro.test(wideReceiver$combineBroad)
+result$p.value
+# p-value = 0.02909524//  p.value<0.05 is indication that the transformd data does now come from a normally distributed sample.
+
+
+```
+
+```{r}
+
+# combine3cone
+
+(cone_Skew <- skewness(wideReceiver$combine3cone))
+# -0.03148472 
+#skewness between -0.5 and 0.5 suggests that 3 cone data comes from an approximately symmetrical population
+
+#lets look at this further
+
+# we can visualise this in a histogram and box plots
+
+#density histogram - combineBroad
+(cone_density <- ggplot(wideReceiver, aes(x=combine3cone, y=..density..))+
+  geom_density(size=0.7, color='red', adjust=2)+
+  geom_histogram(binwidth = .1))
+ggsave(cone_density, filename = 'WR3 cone score Density histogram.png')
+
+#A boxplot displaying the spread of combine3cone
+#visualise the spread of combine3cone in a box plot
+(cone_box <- ggplot(wideReceiver,aes("",combine3cone))+geom_boxplot()+coord_flip()+scale_x_discrete())
+ggsave(cone_box, filename = 'WRCone Box_plot.png')
+
+```
+
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+```{r}
+
+#lets look at the data now that we have transformed shuttle and broad jump data to normalised distribution
+
+#lets consider the degree of variance
+#check the variance to decide whether the scaling is required.
+apply(wideReceiver, 2, var) # significant degree of varaince.
+
+#Apply scaling.
+str(wideReceiver)
+
+#Keep label as 1,2,3
+remove.col <- length(wideReceiver)
+
+scaling <- subset(wideReceiver, select = -remove.col)
+scaled_WR <- apply(scaling, 2, scale)
+
+# convert scaled data  back to data frme
+scaled_WR <- as.data.frame(scaled_WR)
+scaled_WR$careerSuccess <- wideReceiver$careerSuccess
+str(scaled_WR)
+
+
+#Now the scaled WR data variance is close to unity.
+apply(scaled_WR, 2, var) # we can see the variables have been scaled
+
+
+#convert target (categorical variable)  to factor in both df's - scaled_WR and wideReceiver
+wideReceiver$careerSuccess <- as.factor(wideReceiver$careerSuccess)
+scaled_WR$careerSuccess <- as.factor(scaled_WR$careerSuccess)
+
+str(scaled_WR)
+ 
+```
+
+```{r}
+
+
+
+
+```
+
+```{r}
+
+# lets look at any correlation between features and the target feature- careerSuccess
+
+# examine the relationship between height and weight and careerSuccess in a Scatter plot
+# note - can change order arguments are passed here data passed first
+(scatterHeight_Weight <- qplot(data = wideReceiver, 
+      x =combineHeight,
+      y= combineWeight,
+      color =careerSuccess,
+      main = "Wide receiver Height and Weight v Success"))
+ggsave(scatterHeight_Weight, filename = 'WRHeightandWeight v success.png')
+
+# no clustering observed
+
+```
+
+```{r}
+
+colnames(wideReceiver)
+
+# lets look at any correlation between features and the target feature- careerSuccess
+
+# examine the relationship between age and success in a  Scatter plot
+# note - can change order arguments are passed here data passed first
+(scatterAge <- qplot(data = wideReceiver, 
+      x =ageAtDraft,
+      y= careerSuccess,
+      main = "Wide Receiver Age (at time of draft) v Success"))
+ggsave(scatterAge, filename = 'WR Age v success.png')
+
+# no clustering observed
+
+
+
+```
+
+
+```{r}
+#pairplot 
+
+group<- NA
+
+group[wideReceiver$careerSuccess ==1] <- 1
+group[wideReceiver$careerSuccess ==2] <- 2
+group[wideReceiver$careerSuccess ==3] <- 3
+
+
+pairs(wideReceiver[,1:3],
+      col = c('red',"cornflowerblue","purple")[group],
+      pch = c(8,18,1) [group],
+      main = 'Wide Receiver Pairplot')
+
+```
+
+
+this section of code which creates a Pair plot  has a long computational time. If you wish to run this code, please uncomment this section 
+
+
+
+```{r}
+
+
+# install.packages("pairsD3")
+# devtools::install_github("garthtarr/pairsD3")
+# require("pairsD3")
+# library(magrittr)
+# 
+# pd <- pairsD3(wideReceiver[,c(1,2,3,4,5,6,7,8,9)], group = wideReceiver[,10], opacity = 0.9, cex = 2, width = 1200)
+# 
+# savePairs(pd, 'pd.html')
+# 
+# 
+# (pdReduced <- pairsD3(wideReceiver[,c(4,5,8,7,9)], group = wideReceiver[,10], opacity = 0.9, cex = 2, width = 1023))
+# savePairs(pdReduced, 'pdReduced.html')
+
+
+
+```
+
+```{r}
+
+# Lets look at the class balance of the target variable
+(success_count <-  wideReceiver %>% count(careerSuccess))
+
+
+#    1   2   3 
+#    35 193 103 
+
+# calculate class balance as percentage
+#first change 
+nrow(wideReceiver)
+#331
+
+calculatePct <- function(dataframe1, dataframe2, r, c) {
+  pct <- (dataframe1[r,c]/nrow(dataframe2))*100
+  return(pct)
+}
+
+
+
+
+#class 1 - below average
+(class1pct <- calculatePct(success_count, wideReceiver, 1,2))
+# 10.57402
+
+#class 2 - average
+(class2pct <- calculatePct(success_count, wideReceiver, 2,2))
+# 58.30816
+
+# class 3 - above average
+(class3pct <- calculatePct(success_count, wideReceiver, 3,2))
+# 31.11782
+
+
+
+
+# #this shows a class mismatch - use SMOTE to synthesize points of class 1 and 3 - (below average and above average)
+
+#first lets convert target variable to factor
+scaled_WR$careerSuccess <- as.factor(scaled_WR$careerSuccess)
+
+
+First_Imbalence_correctt <- DMwR::SMOTE(careerSuccess ~ ., scaled_WR, perc.over = 2000,perc.under=100)
+
+Final_Imbalence_correct <- DMwR::SMOTE(careerSuccess ~ ., First_Imbalence_correctt, perc.over = 2000,perc.under=200)
+# Lets look at the class balance of the target variable after SMOTE
+(success_count <-  Final_Imbalence_correct %>% count(careerSuccess))
+
+
+# lets now check percentage distribution of each class
+#class 1 - below average
+(class1pct <- calculatePct(success_count, Final_Imbalence_correct, 1,2))
+# 39.86232
+
+
+#class 2 - average
+(class2pct <- calculatePct(success_count, Final_Imbalence_correct, 2,2))
+#25.71145
+
+# class 3 - above average
+(class3pct <- calculatePct(success_count, Final_Imbalence_correct, 3,2))
+
+# 34.42623
+
+```
+
+```{r}
+# building a classification model
+
+#Random forest classifier
+
+# STEP I : 
+#--------------------------------
+# Splitting the dataset into the Training set and Test set
+set.seed(71)
+
+#split into 70% trianing and 30% testing
+split = sample.split(Final_Imbalence_correct$careerSuccess, SplitRatio = 0.7)
+training_data = subset(Final_Imbalence_correct, split == TRUE) # True = 70% 
+test_data = subset(Final_Imbalence_correct, split == FALSE) # False = 30%
+
+
+
+```
+
+```{r}
+
+#Step II : Train the classifier to obtain a random forest classifier model.
+#--------------------------------------------------------------------------
+
+# Train and tune the random forest (rf) algorithm on the training data.
+
+set.seed(71)
+
+#build RF with 3 variables at each node - square root of number of variables
+rf <-randomForest(careerSuccess~.,data=training_data,  mtry=3, importance=TRUE,ntree=500)
+rf
+#OOB estimate of  error rate: 0.04%
+
+# now try 2
+rf <-randomForest(factor(careerSuccess)~.,data=training_data, mtry=2, importance=TRUE,ntree=500)
+rf
+# OOB estimate of  error rate: 0.03%
+
+
+#now try 4
+rf <-randomForest(factor(careerSuccess)~.,data=training_data, mtry=4, importance=TRUE,ntree=500)
+rf
+# OOB estimate of  error rate: 0.04%
+
+# so 2,3,4  variables at each tree nde should be used, lets use tuneRf to confirm
+
+# # Find the optimal value of mtry.
+# 
+mtry <- tuneRF(training_data[-10],training_data$careerSuccess, ntreeTry=500,
+                stepFactor=1.5,improve=0.05, trace=TRUE, plot=TRUE)
+ mtry
+ mtry[, 2] == min(mtry[, 2])
+ best.m <- mtry[mtry[, 2] == min(mtry[, 2]), 1]
+
+print(best.m)
+
+#Apply random forest (rf) with the optimal value of mtry.
+set.seed(71)
+rf <-randomForest(factor(careerSuccess)~.,data=training_data, mtry=best.m, importance=TRUE,ntree=500)
+rf
+
+(oobData <- as.data.table(plot(rf)))
+(oobData[,trees:=.I])
+(oobData2 <- melt(oobData, id.vars = 'trees'))
+setnames(oobData2, 'value', 'error')
+
+(OOB.RF <- ggplot(data = oobData2, aes(x= trees, y = error, color = variable))+
+  geom_line())
+ggsave(OOB.RF, filename = "OOB.RF.PNG")
+
+# we can see that very few errors greater than approx 100 trees
+# Lets grow another RF with 100 trees
+rf <-randomForest(factor(careerSuccess)~.,data=training_data, mtry=best.m, importance=TRUE,ntree=100)
+rf
+
+
+
+table(predict(rf),training_data$careerSuccess)
+
+oobData <- as.data.table(plot(rf))
+oobData[,trees:=.I]
+oobData2 <- melt(oobData, id.vars = 'trees')
+setnames(oobData2, 'value', 'error')
+
+(OOB.RF <- ggplot(data = oobData2, aes(x= trees, y = error, color = variable))+
+  geom_line())
+ggsave(OOB.RF, filename = "OOB.RF2.PNG")
+
+
+```
+
+```{r}
+#Step III: Evaluate the classifier on the test data. 
+#--------------------------------------------------
+
+#Predicting the Test set results.
+y_pred = predict(rf,test_data)
+test_data$y_pred <- y_pred
+
+
+#build a confusion Matrix
+(confusion.matrix <- table(test_data$`y_pred` ,test_data$careerSuccess))
+
+
+(Classification.Accuracy <- 100*Accuracy(test_data$`y_pred`,test_data$careerSuccess))
+# 100% accuracy
+
+
+my.stats <- function(actual, predicted) {
+  confusion.table <- table(Actual = actual, Predicted = predicted)
+  (output <- list(confusion.table=confusion.table))
+  Tp0 <- confusion.table[1]
+  Tp0.5 <- confusion.table[5]
+  Tp1 <- confusion.table[9]
+  E.5_0 <- confusion.table[2]
+  E1_0 <- confusion.table[3]
+  E0_0.5 <- confusion.table[4]
+  E1_0.5 <- confusion.table[6]
+  E0_1 <- confusion.table[7]
+  E0.5_1 <- confusion.table[8]
+  Tn0 <- (sum(confusion.table[1:9])-(sum(confusion.table[1:3])+(confusion.table[4]+confusion.table[7])))
+  Tn0.5 <- (sum(confusion.table[1:9])-(sum(confusion.table[4:6])+(confusion.table[2]+confusion.table[8])))
+  Tn1 <- (sum(confusion.table[1:9])-(sum(confusion.table[7:9])+(confusion.table[3]+confusion.table[6])))
+  output$accuracy <- (Tp0+Tp0.5+Tp1)/sum(confusion.table)
+  output$precisonClass0 <- (Tp0)/(Tp0+E.5_0+E1_0)
+  output$precisonClass0.5 <- (Tp0.5)/(Tp0.5+E0_0.5+E1_0.5)
+  output$precisonClass1 <- (Tp1)/(Tp1+E0_1+E0.5_1)
+  output$sensitivityClass0 <- (Tp0)/(Tp0+E0_0.5+E0_1)
+  output$sensitivityClass0.5 <- (Tp0.5)/(Tp0.5+E0_0.5+E0.5_1)
+  output$sensitivityClass1 <- (Tp1)/(Tp1+E0_1+E1_0.5)
+  output$specificityClass0 <- (Tn0)/(Tn0+E.5_0+E1_0)
+  output$specificityClass0.5 <- (Tn0.5)/(Tn0.5+E0_0.5+E1_0.5)
+  output$specificityClass1 <- (Tn1)/(Tn1+E.5_0+E0.5_1)
+
+  
+  
+ 
+  
+  return(output)
+  
+}
+
+
+my.stats(actual = as.factor(test_data$careerSuccess), predicted =y_pred )
+
+
+preds <- as.numeric(predict(rf, newdata = test_data, type = 'response' ))
+roc.multi <- multiclass.roc(test_data$careerSuccess, preds)
+auc(roc.multi)
+(rs <- roc.multi[['rocs']])
+plot.roc(rs[[1]])
+sapply(2:length(rs), function(i) lines.roc(rs[[i]],col=i))
+
+
+
+```
+
+```{r}
+
+# feature selection and variable importance
+
+importance(rf)
+varImpPlot(rf)
+
+```
+
+
+```{r}
+
+#we have already demonstrated the co-linearity between height and weight
+
+with(Final_Imbalence_correct, cor(combineHeight, combineWeight))
+#0.7776568
+
+```
+
+
+
+```{r}
+
+# Now that we have studied correlations among the variables in the data, we can perform feature selection.
+remove.col <- subset(Final_Imbalence_correct, select = -c(combineHeight, combineShuttle, combineVert))
+Final_Imbalence_correct <- remove.col
+
+
+# Correlation can be computed between numerical variables only  so  coerce non-numerical variables.
+Final_Imbalence_correct$careerSuccess <- as.numeric(Final_Imbalence_correct$careerSuccess) 
+
+correlations <- cor(Final_Imbalence_correct[-7])
+
+png(height=1800, width=1800, file="FeatureCorrplot.png", type = "cairo")
+corrplot(correlations, 
+         method = "circle",
+         is.corr = F,
+         order = "FPC",
+         tl.col="black")
+
+#Using the correlation plot find out the predictor variables that are strongly correlated.
+
+```
+
+
+```{r}
+#Let us now apply the feature selection algorithm Boruta.
+
+
+
+set.seed(1)
+
+str(Final_Imbalence_correct)
+
+Boruta.Final_Imbalence_correct <- Boruta(careerSuccess~ ., data = Final_Imbalence_correct, doTrace = 2, ntree = 500)
+
+#Plot the importance of the attributes.
+plot(Boruta.Final_Imbalence_correct)
+
+#Confirming the tentative attributes, if some remained tentative in the initial round.
+Boruta.Final_Imbalence_correct.final<-TentativeRoughFix(Boruta.Final_Imbalence_correct)
+
+
+plot(Boruta.Final_Imbalence_correct.final)
+
+#The attStats function creates a data frame containing each attribute's Z score statistics and the fraction of random forest runs in which this attribute was more important than the most important shadow one.
+
+(attStats(Boruta.Final_Imbalence_correct.final))
+#predictor variables 0 are rejected.
+
+#-================================================
+```
+
+
+```{r}
+
+# lets, for a final time grow a forest on remaining features
+
+#split into 70% trianing and 30% testing
+split = sample.split(Final_Imbalence_correct$careerSuccess, SplitRatio = 0.7)
+training_data = subset(Final_Imbalence_correct, split == TRUE) # True = 70% 
+test_data = subset(Final_Imbalence_correct, split == FALSE) # False = 30%
+
+```
+
+```{r}
+
+#Step II : Train the classifier to obtain a random forest classifier model.
+#--------------------------------------------------------------------------
+
+# Train and tune the random forest (rf) algorithm on the training data.
+
+ set.seed(71)
+
+
+#build with 2 variables at each node - square root of number of variables
+rf <-randomForest(factor(careerSuccess)~.,data=training_data, mtry=2, importance=TRUE,ntree=500)
+rf
+#OOB estimate of  error rate: 0.09%
+
+# now try 1
+rf <-randomForest(factor(careerSuccess)~.,data=training_data, mtry=1, importance=TRUE,ntree=500)
+rf
+# OOB estimate of  error rate: 0.09%
+
+
+#now try 3
+rf <-randomForest(factor(careerSuccess)~.,data=training_data, mtry=3, importance=TRUE,ntree=500)
+rf
+# OOB estimate of  error rate: 0.1%
+
+
+
+#lets confirm this using tuneRF
+# Find the optimal value of mtry.
+mtry <- tuneRF(training_data[-7],training_data$careerSuccess, ntreeTry=500,
+               stepFactor=1.5,improve=0.01, trace=TRUE, plot=TRUE)
+mtry
+mtry[, 2] == min(mtry[, 2])
+best.m <- mtry[mtry[, 2] == min(mtry[, 2]), 1]
+
+print(best.m)
+
+#Apply random forest (rf) with the optimal value of mtry.
+set.seed(71)
+
+#we demonstrated above that 1 variable had a smaller OOB error than 2 Vars suggested by the tune RF model.
+# lets not use best.m as we know it is has a reduced OOB Error
+rf <-randomForest(factor(careerSuccess)~.,data=training_data, mtry=best.m, importance=TRUE,ntree=500)
+rf
+
+oobData <- as.data.table(plot(rf))
+oobData[,trees:=.I]
+oobData2 <- melt(oobData, id.vars = 'trees')
+setnames(oobData2, 'value', 'error')
+
+(OOB.RF <- ggplot(data = oobData2, aes(x= trees, y = error, color = variable))+
+  geom_line())
+ggsave(OOB.RF, filename = "OOB.RFcolsRemoved.PNG")
+
+
+```
+
+```{r}
+#Predicting the Test set results.
+y_pred = predict(rf, newdata = test_data)
+
+# Making the Confusion Matrix
+(cm = ConfusionMatrix(y_pred, test_data$careerSuccess))
+
+(Classification.Accuracy <- 100*Accuracy(y_pred,test_data$careerSuccess))
+# 99.90% accuracy
+
+
+
+
+my.stats <- function(actual, predicted) {
+  confusion.table <- table(Actual = actual, Predicted = predicted)
+  (output <- list(confusion.table=confusion.table))
+  Tp0 <- confusion.table[1]
+  Tp0.5 <- confusion.table[5]
+  Tp1 <- confusion.table[9]
+  E.5_0 <- confusion.table[2]
+  E1_0 <- confusion.table[3]
+  E0_0.5 <- confusion.table[4]
+  E1_0.5 <- confusion.table[6]
+  E0_1 <- confusion.table[7]
+  E0.5_1 <- confusion.table[8]
+  Tn0 <- (sum(confusion.table[1:9])-(sum(confusion.table[1:3])+(confusion.table[4]+confusion.table[7])))
+  Tn0.5 <- (sum(confusion.table[1:9])-(sum(confusion.table[4:6])+(confusion.table[2]+confusion.table[8])))
+  Tn1 <- (sum(confusion.table[1:9])-(sum(confusion.table[7:9])+(confusion.table[3]+confusion.table[6])))
+  output$accuracy <- (Tp0+Tp0.5+Tp1)/sum(confusion.table)
+  output$precisonClass0 <- (Tp0)/(Tp0+E.5_0+E1_0)
+  output$precisonClass0.5 <- (Tp0.5)/(Tp0.5+E0_0.5+E1_0.5)
+  output$precisonClass1 <- (Tp1)/(Tp1+E0_1+E0.5_1)
+  output$sensitivityClass0 <- (Tp0)/(Tp0+E0_0.5+E0_1)
+  output$sensitivityClass0.5 <- (Tp0.5)/(Tp0.5+E0_0.5+E0.5_1)
+  output$sensitivityClass1 <- (Tp1)/(Tp1+E0_1+E1_0.5)
+  output$specificityClass0 <- (Tn0)/(Tn0+E.5_0+E1_0)
+  output$specificityClass0.5 <- (Tn0.5)/(Tn0.5+E0_0.5+E1_0.5)
+  output$specificityClass1 <- (Tn1)/(Tn1+E.5_0+E0.5_1)
+
+  
+  
+ 
+  
+  return(output)
+  
+}
+
+
+my.stats(actual = as.factor(test_data$careerSuccess), predicted =y_pred )
+
+
+preds <- as.numeric(predict(rf, newdata = test_data, type = 'response' ))
+roc.multi <- multiclass.roc(test_data$careerSuccess, preds)
+auc(roc.multi)
+(rs <- roc.multi[['rocs']])
+plot.roc(rs[[1]])
+sapply(2:length(rs), function(i) lines.roc(rs[[i]],col=i))
+
+
+```
+
+```{r}
+
+importance(rf)
+varImpPlot(rf)
+
+```
+
+```{r}
+#let us reduce the complexity of the output variable to binary classification
+# first classify below averager v not below average
+
+
+
+scaled_WR$careerSuccess <- as.numeric(scaled_WR$careerSuccess)
+
+binarize <- function(dataset, number){
+  row <- 1
+  nrow(dataset)
+  colNum <-  length(dataset)
+  while (row<=nrow(dataset)){
+ if(dataset[row,colNum] == number){
+     dataset[row, colNum] <- dataset[row, colNum]
+     row=row+1
+  }#end if
+    else{ 
+      dataset[row,colNum] <-  0
+    row=row+1
+    }#end else
+  }# end while
+  dataset$careerSuccess <- as.factor(dataset$careerSuccess)
+return(dataset)
+}#end func
+
+
+wideReceiver_BelAv. <-  binarize(scaled_WR,1)
+wideReceiver_Av.<-  binarize(scaled_WR,2)
+wideReceiver_AbAv. <-  binarize(scaled_WR,3)
+
+
+```
+
+```{r}
+
+
+
+
+# diagosis count
+(careerSuccess_count <-  table(wideReceiver_BelAv.$careerSuccess))
+
+#    0    1 
+#   296  35 
+
+# #this shows a class imbalance - use SMOTE to synthesis points of class 1 - (Below Average)
+balanced_data <- SMOTE(wideReceiver_BelAv.[-10],  # feature values
+              wideReceiver_BelAv.$careerSuccess,  # class labels
+              K = 5, dup_size = 1)  # function parameters
+(table(as.factor(balanced_data[10])))
+#str(balanced_data)
+mydata <- bind_cols(balanced_data$data[10], balanced_data$data[-10])
+#str(mydata)
+table(mydata$class)
+
+#    0    1 
+#   296  70 
+
+
+# Make dependent variable as a factor (categorical).
+mydata$class = as.factor(mydata$class)
+
+#Set the label colname back to "Diagnosis".
+names(mydata)[1]<- "careerSuccess"
+
+```
+
+
+
+```{r}
+
+#Random forest classifier
+
+# Splitting the dataset into the Training set and Test set
+
+set.seed(71)
+
+#splits into 70% trianing and 30% testing
+split = sample.split(mydata$careerSuccess, SplitRatio = 0.7)
+#split
+
+
+training_mydata = subset(mydata, split == TRUE) # True = 70% 
+test_mydata = subset(mydata, split == FALSE) # False = 30%
+
+```
+
+```{r}
+#Train the classifier to obtain a random forest classifier model.
+#--------------------------------------------------------------------------
+
+# Train and tune the random forest (rf) algorithm on the training data.
+
+# Find the optimal value of mtry.
+set.seed(71) 
+mtry <- tuneRF(training_mydata[-1],training_mydata$careerSuccess, ntreeTry=500,
+               stepFactor=1.5,improve=0.01, trace=TRUE, plot=TRUE)
+mtry
+mtry[, 2] == min(mtry[, 2])
+best.m <- mtry[mtry[, 2] == min(mtry[, 2]), 1]
+
+print(mtry)
+print(best.m)
+
+#Apply random forest (rf) with the optimal value of mtry.
+set.seed(71)
+rf <-randomForest(factor(careerSuccess)~.,data=training_mydata, mtry=best.m, importance=TRUE,ntree=500)
+print(rf)
+
+#output
+# Call:
+#  randomForest(formula = factor(careerSuccess) ~ ., data = training_mydata,      mtry = best.m, importance = TRUE, ntree = 500) 
+#                Type of random forest: classification
+#                      Number of trees: 500
+# No. of variables tried at each split: 2
+# 
+#         OOB estimate of  error rate: 13.28%
+# Confusion matrix:
+#     0  1 class.error
+# 0 206  1 0.004830918
+# 1  31 18 0.632653061
+
+plot(rf)
+
+
+oobData <- as.data.table(plot(rf))
+oobData[,trees:=.I]
+oobData2 <- melt(oobData, id.vars = 'trees')
+setnames(oobData2, 'value', 'error')
+
+(OOB.RF <- ggplot(data = oobData2, aes(x= trees, y = error, color = variable))+
+  geom_line())
+ggsave(OOB.RF, filename = "OOB.RFcolsRemoved.PNG")
+#In the rf plot, the red curve represents the Error for the class 0 and the green curve represents the Error for the class 1. The OOB error is represented by the black curve. 
+
+#Evaluate variable importance
+importance(rf)
+varImpPlot(rf)
+
+
+
+```
+
+
+```{r}
+# Evaluate the classifier on the test data. 
+#--------------------------------------------------
+
+
+
+#Predicting the Test set results.
+y_pred = predict(rf, newdata = test_mydata)
+
+
+# Making the Confusion Matrix
+(cm = ConfusionMatrix(y_pred, test_mydata$careerSuccess))
+
+#      y_pred
+#y_true  0  1
+#     0 89  0
+#     1 17  4
+
+(Classification.Accuracy <- 100*Accuracy(y_pred, test_mydata$careerSuccess))
+# 84.54545
+
+
+#Prediction and Calculate Performance Metrics
+pred1=predict(rf,newdata = test_mydata,type = "prob")
+
+#performance
+perf = prediction(pred1[,2], test_mydata$careerSuccess)
+
+# Accuracy.
+acc = performance(perf, "acc")
+plot(acc,main="Accurcay Curve for Random Forest",col=2,lwd=2)
+
+# Area under curve
+auc = performance(perf, "auc")
+auc@y.values[[1]]
+
+# True Positive and Negative Rate
+pred3 = performance(perf, "tpr","fpr")
+
+# Plot the ROC curve
+plot(pred3,main="ROC Curve for Random Forest",col=2,lwd=2)+
+abline(a=0,b=1,lwd=2,lty=2,col="gray")
+
+
+
+```
+
+
+```{r}
+
+
+
+
+# diagosis count
+(careerSuccess_count <-  table(wideReceiver_Av.$careerSuccess))
+
+#    0    2
+#   138  193 
+
+# #this shows a small class imbalance - use SMOTE to synthesis points of class 2 - (Average)
+
+balanced_data <- SMOTE(wideReceiver_Av.[-10],  # feature values
+              wideReceiver_Av.$careerSuccess,  # class labels
+              K = 5, dup_size = 1)  # function parameters
+(table(as.factor(balanced_data[10])))
+#str(balanced_data)
+library(dplyr)
+mydata <- bind_cols(balanced_data$data[10], balanced_data$data[-10])
+#str(mydata)
+table(mydata$class)
+
+#    0    1 
+#  276  193 
+
+
+# Make dependent variable as a factor (categorical).
+mydata$class = as.factor(mydata$class)
+
+str(mydata)
+
+
+#Set the label colname back to "Diagnosis".
+names(mydata)[1]<- "careerSuccess"
+
+```
+
+
+
+```{r}
+
+#Random forest classifier
+
+# Splitting the dataset into the Training set and Test set
+
+set.seed(71)
+
+
+#splits into 70% trianing and 30% testing
+split = sample.split(mydata$careerSuccess, SplitRatio = 0.7)
+#split
+
+
+training_mydata = subset(mydata, split == TRUE) # True = 70% 
+test_mydata = subset(mydata, split == FALSE) # False = 30%
+```
+
+```{r}
+#Train the classifier to obtain a random forest classifier model.
+#--------------------------------------------------------------------------
+
+# Train and tune the random forest (rf) algorithm on the training data.
+
+
+# Find the optimal value of mtry.
+set.seed(71) 
+mtry <- tuneRF(training_mydata[-1],training_mydata$careerSuccess, ntreeTry=500,
+               stepFactor=1.5,improve=0.01, trace=TRUE, plot=TRUE)
+mtry
+mtry[, 2] == min(mtry[, 2])
+best.m <- mtry[mtry[, 2] == min(mtry[, 2]), 1]
+
+print(mtry)
+print(best.m)
+
+#Apply random forest (rf) with the optimal value of mtry.
+set.seed(71)
+rf <-randomForest(factor(careerSuccess)~.,data=training_mydata, mtry=best.m, importance=TRUE,ntree=500)
+print(rf)
+
+#output
+# randomForest(formula = factor(careerSuccess) ~ ., data = training_mydata,      mtry = best.m, importance = TRUE, ntree = 500) 
+#                Type of random forest: classification
+#                      Number of trees: 500
+# No. of variables tried at each split: 2
+# 
+#         OOB estimate of  error rate: 30.18%
+# Confusion matrix:
+#     0  2 class.error
+# 0 165 28   0.1450777
+# 2  71 64   0.5259259
+
+plot(rf)
+
+
+oobData <- as.data.table(plot(rf))
+oobData[,trees:=.I]
+oobData2 <- melt(oobData, id.vars = 'trees')
+setnames(oobData2, 'value', 'error')
+
+(OOB.RF <- ggplot(data = oobData2, aes(x= trees, y = error, color = variable))+
+  geom_line())
+ggsave(OOB.RF, filename = "OOB.RFcolsRemoved.PNG")
+#In the rf plot, the red curve represents the Error for the class 0 and the green curve represents the Error for the class 1. The OOB error is represented by the black curve. 
+
+#Evaluate variable importance
+importance(rf)
+varImpPlot(rf)
+
+
+
+```
+
+
+```{r}
+# Evaluate the classifier on the test data. 
+#--------------------------------------------------
+
+#Predicting the Test set results.
+y_pred = predict(rf, newdata = test_mydata)
+
+
+# Making the Confusion Matrix
+(cm = ConfusionMatrix(y_pred, test_mydata$careerSuccess))
+
+# 0 361   8
+# 1  11 263
+
+
+(Classification.Accuracy <- 100*Accuracy(y_pred, test_mydata$careerSuccess))
+# 73.8%
+
+#Prediction and Calculate Performance Metrics
+pred1=predict(rf,newdata = test_mydata,type = "prob")
+
+#performance
+perf = prediction(pred1[,2], test_mydata$careerSuccess)
+
+# Accuracy.
+acc = performance(perf, "acc")
+plot(acc,main="Accurcay Curve for Random Forest",col=2,lwd=2)
+
+# Area under curve
+auc = performance(perf, "auc")
+auc@y.values[[1]]
+
+# True Positive and Negative Rate
+pred3 = performance(perf, "tpr","fpr")
+
+# Plot the ROC curve
+plot(pred3,main="ROC Curve for Random Forest",col=2,lwd=2)+
+abline(a=0,b=1,lwd=2,lty=2,col="gray")
+
+
+```
+
+```{r}
+
+
+
+
+# diagosis count
+(careerSuccess_count <-  table(wideReceiver_AbAv.$careerSuccess))
+
+#    0    2
+#   228  103 
+
+# #this shows a class imbalance - use SMOTE to synthesis points of class 3 - (Above Average)
+
+
+
+balanced_data <- SMOTE(wideReceiver_AbAv.[-10],  # feature values
+              wideReceiver_AbAv.$careerSuccess,  # class labels
+              K = 5, dup_size = 1)  # function parameters
+(table(as.factor(balanced_data[10])))
+#str(balanced_data)
+mydata <- bind_cols(balanced_data$data[10], balanced_data$data[-10])
+#str(mydata)
+table(mydata$class)
+
+#    0    1 
+#   228  206 
+
+
+# Make dependent variable as a factor (categorical).
+mydata$class = as.factor(mydata$class)
+
+str(mydata)
+
+
+#Set the label colname back to "Diagnosis".
+names(mydata)[1]<- "careerSuccess"
+
+```
+
+
+
+```{r}
+
+#Random forest classifier
+
+# Splitting the dataset into the Training set and Test set
+
+set.seed(71)
+
+#splits into 70% trianing and 30% testing
+split = sample.split(mydata$careerSuccess, SplitRatio = 0.7)
+#split
+
+
+training_mydata = subset(mydata, split == TRUE) # True = 70% 
+test_mydata = subset(mydata, split == FALSE) # False = 30%
+```
+
+```{r}
+#Train the classifier to obtain a random forest classifier model.
+#--------------------------------------------------------------------------
+
+# Train and tune the random forest (rf) algorithm on the training data.
+
+
+# Find the optimal value of mtry.
+set.seed(71) 
+mtry <- tuneRF(training_mydata[-1],training_mydata$careerSuccess, ntreeTry=500,
+               stepFactor=1.5,improve=0.01, trace=TRUE, plot=TRUE)
+mtry
+mtry[, 2] == min(mtry[, 2])
+best.m <- mtry[mtry[, 2] == min(mtry[, 2]), 1]
+
+print(mtry)
+print(best.m)
+
+#Apply random forest (rf) with the optimal value of mtry.
+set.seed(71)
+rf <-randomForest(factor(careerSuccess)~.,data=training_mydata, mtry=best.m, importance=TRUE,ntree=500)
+print(rf)
+
+#output
+#Call:
+#  randomForest(formula = factor(careerSuccess) ~ ., data = training_mydata,      mtry = best.m, importance = TRUE, ntree = 500) 
+#                Type of random forest: classification
+#                      Number of trees: 500
+# No. of variables tried at each split: 2
+# 
+#         OOB estimate of  error rate: 25.99%
+# Confusion matrix:
+#     0   3 class.error
+# 0 119  41   0.2562500
+# 3  38 106   0.2638889
+plot(rf)
+
+
+oobData <- as.data.table(plot(rf))
+oobData[,trees:=.I]
+oobData2 <- melt(oobData, id.vars = 'trees')
+setnames(oobData2, 'value', 'error')
+
+(OOB.RF <- ggplot(data = oobData2, aes(x= trees, y = error, color = variable))+
+  geom_line())
+ggsave(OOB.RF, filename = "OOB.RFcolsRemoved.PNG")
+#In the rf plot, the red curve represents the Error for the class 0 and the green curve represents the Error for the class 1. The OOB error is represented by the black curve. 
+
+#Evaluate variable importance
+importance(rf)
+varImpPlot(rf)
+
+
+
+```
+
+
+```{r}
+# Evaluate the classifier on the test data. 
+#--------------------------------------------------
+
+#Predicting the Test set results.
+y_pred = predict(rf, newdata = test_mydata)
+
+
+
+
+# Making the Confusion Matrix
+(cm = ConfusionMatrix(y_pred, test_mydata$careerSuccess))
+
+#     y_pred
+#y_true  0  3
+#     0 52 16
+#     3 16 46
+
+
+(Classification.Accuracy <- 100*Accuracy(y_pred, test_mydata$careerSuccess))
+# 75.38462
+
+#Prediction and Calculate Performance Metrics
+pred1=predict(rf,newdata = test_mydata,type = "prob")
+
+#performance
+perf = prediction(pred1[,2], test_mydata$careerSuccess)
+
+# Accuracy.
+acc = performance(perf, "acc")
+plot(acc,main="Accurcay Curve for Random Forest",col=2,lwd=2)
+
+# Area under curve
+auc = performance(perf, "auc")
+auc@y.values[[1]]
+
+# True Positive and Negative Rate
+pred3 = performance(perf, "tpr","fpr")
+
+# Plot the ROC curve
+plot(pred3,main="ROC Curve for Random Forest",col=2,lwd=2)+
+abline(a=0,b=1,lwd=2,lty=2,col="gray")
+
+
+
+```
+
+
+
+
+```{r}
+#Lets use KNN to build a classification model on WR dataset
+
+
+#split into 70% trianing and 30% testing
+split = sample.split(Final_Imbalence_correct$careerSuccess, SplitRatio = 0.7)
+training_data = subset(Final_Imbalence_correct, split == TRUE) # True = 70% 
+test_data = subset(Final_Imbalence_correct, split == FALSE) # False = 30%
+
+str(test_data)
+
+train.labels <-training_data[,7]  
+test.labels <- test_data[,7]
+
+
+train.labels <- as.data.frame(train.labels)
+test.labels <- as.data.frame(test.labels)
+
+nrow(train.labels) #to find number of observations
+
+
+
+
+train.labels$train.labels <- as.factor(train.labels$train.labels)
+test.labels$test.labels <- as.factor(test.labels$test.labels)
+#convert labels to vector
+train_labs <- train.labels[,1]
+test_labs <- test.labels[,1]
+error.train <- replicate(0,5)
+for(k in 1:5){
+knn_pred <- knn(train=training_data[,1:6],
+             test = training_data[,1:6],
+             train_labs,
+             k)
+      error.train[k] <- 1-mean(knn_pred==train_labs)
+}
+error.train <- unlist(error.train,use.names = FALSE)
+
+ error.test <- replicate(0,5)
+ for(k in 1:5){
+ knn_pred <- knn(train=training_data[,1:6],
+              test = test_data[,1:6],
+              train_labs,
+              k)
+       error.test[k] <- 1-mean(knn_pred==test_labs)
+ 
+}
+error.test <- unlist(error.test,use.names = FALSE)
+
+
+plot(error.train, type="o", ylim=c(0,0.05), col="blue", xlab = "K values", ylab = "Misclassification errors")
+lines(error.test, type = "o", col="red")
+legend("topright", legend=c("Training error","Test error"), col = c("blue","red"), lty=1:1)
+
+
+
+ knn.1 <- knn(train=training_data[,1:6],
+              test = test_data[,1:6],
+              train_labs,
+              k=1)
+ 
+  knn.2 <- knn(train=training_data[,1:6],
+              test = test_data[,1:6],
+              train_labs,
+              k=2)
+
+Acc1 <- 100*sum(test.labels[,1]==knn.1)/nrow(test.labels)
+Acc2 <- 100*sum(test.labels[,1]==knn.2)/nrow(test.labels)
+
+Acc1 
+#100%
+Acc2
+#99.89%
+
+table(test_data$careerSuccess, knn.1)
+table(test_data$careerSuccess, knn.2)
+
+
+
+
+
+my.stats <- function(actual, predicted) {
+  confusion.table <- table(Actual = actual, Predicted = predicted)
+  (output <- list(confusion.table=confusion.table))
+  Tp0 <- confusion.table[1]
+  Tp0.5 <- confusion.table[5]
+  Tp1 <- confusion.table[9]
+  E.5_0 <- confusion.table[2]
+  E1_0 <- confusion.table[3]
+  E0_0.5 <- confusion.table[4]
+  E1_0.5 <- confusion.table[6]
+  E0_1 <- confusion.table[7]
+  E0.5_1 <- confusion.table[8]
+  Tn0 <- (sum(confusion.table[1:9])-(sum(confusion.table[1:3])+(confusion.table[4]+confusion.table[7])))
+  Tn0.5 <- (sum(confusion.table[1:9])-(sum(confusion.table[4:6])+(confusion.table[2]+confusion.table[8])))
+  Tn1 <- (sum(confusion.table[1:9])-(sum(confusion.table[7:9])+(confusion.table[3]+confusion.table[6])))
+  output$accuracy <- (Tp0+Tp0.5+Tp1)/sum(confusion.table)
+  output$precisonClass0 <- (Tp0)/(Tp0+E.5_0+E1_0)
+  output$precisonClass0.5 <- (Tp0.5)/(Tp0.5+E0_0.5+E1_0.5)
+  output$precisonClass1 <- (Tp1)/(Tp1+E0_1+E0.5_1)
+  output$sensitivityClass0 <- (Tp0)/(Tp0+E0_0.5+E0_1)
+  output$sensitivityClass0.5 <- (Tp0.5)/(Tp0.5+E0_0.5+E0.5_1)
+  output$sensitivityClass1 <- (Tp1)/(Tp1+E0_1+E1_0.5)
+  output$specificityClass0 <- (Tn0)/(Tn0+E.5_0+E1_0)
+  output$specificityClass0.5 <- (Tn0.5)/(Tn0.5+E0_0.5+E1_0.5)
+  output$specificityClass1 <- (Tn1)/(Tn1+E.5_0+E0.5_1)
+
+  
+  
+ 
+  
+  return(output)
+  
+}
+
+
+my.stats(actual = as.factor(test_data$careerSuccess), predicted = knn.1)
+my.stats(actual = as.factor(test_data$careerSuccess), predicted = knn.2)
+
+
+
+
+
+
+```
+
+
+Training and build time for the Neural network is long ~ 4-5 hours.
+To run these sections of code please uncomment this section 
+
+```{r}
+# # Classification model using neural networks
+# #lets normalise the data
+# # we will retain career success as output labels 1,2,3
+# 
+# Final_Imbalence_correct1 <- Final_Imbalence_correct
+# 
+# 
+# #min-max normalisation (scaling)
+# for(i in 1:6){
+#   Final_Imbalence_correct1[,i] <-  (Final_Imbalence_correct[,i]-min(Final_Imbalence_correct[,i]))/(max(Final_Imbalence_correct[,i])-min(Final_Imbalence_correct[,i]))
+# }
+# 
+# 
+# # data partition
+# set.seed(12345)
+# #split data
+# split = sample.split(Final_Imbalence_correct1$careerSuccess, SplitRatio = 0.7)
+# training_data = subset(Final_Imbalence_correct1, split == TRUE) # True = 70% 
+# test_data = subset(Final_Imbalence_correct1, split == FALSE) # False = 30%
+# 
+# training_data$careerSuccess <- as.factor(training_data$careerSuccess)
+# str(training_data)
+# 
+# #neural Networks
+# 
+# 
+# nNet <- neuralnet(careerSuccess~ .,
+#                   data = training_data,
+#                   hidden = 1,
+#                   err.fct ="sse",
+#                   act.fct = 'logistic',
+#                   linear.output = FALSE,
+#                   stepmax=1e+8)
+# 
+# plot(nNet)
+# 
+# 
+# 
+# #lets look at accuracy on training set
+# output <- compute(nNet, training_data[,-7])
+# 
+# output1 <- as.data.frame(output)
+# 
+# prediction <- output$net.result
+# max.col(training_data[,7])
+# origVals <- max.col(training_data[,7])
+# prediction2 <- max.col(prediction)
+# mean(prediction2==origVals)
+#   
+# # 0.8201377
+# 
+# 
+# 
+# 
+# #cross validation
+# 
+# #10 fold Cross validation
+# 
+# set.seed (500)
+# k <- 10
+# outs <- NULL
+# 
+# for(i in 1:k){
+#   predictions <- compute(nNet, test_data[,1:6])
+#   #extract results
+#   predictions_ <- predictions$net.result
+#   origVals <- max.col(test_data[,7])
+#   predicts <- max.col(predictions_)
+#   outs[i] <- mean(predicts == origVals)
+# }
+# 
+# mean(outs)
+#   
+# #84%
+# 
+# 
+# #====================
+# #try with 2 nodes in the  hidden layer
+# 
+# 
+# nNet <- neuralnet(careerSuccess~ .,
+#                   data = training_data,
+#                   hidden = 2,
+#                   err.fct ="sse",
+#                   act.fct = 'logistic',
+#                   linear.output = FALSE,
+#                   stepmax=1e+08)
+# 
+# plot(nNet)
+# 
+# 
+# #lets look at accuracy on training set
+# output <- compute(nNet, training_data[,-7])
+# 
+# prediction <- output$net.result
+# 
+# origVals <- max.col(training_data[,7])
+# prediction2 <- max.col(prediction)
+# mean(prediction2==origVals)
+#   
+# # 35.1%
+# 
+#  
+# 
+# 
+# #cross validation
+# 
+# #10 fold Cross validation
+# 
+# set.seed (500)
+# k <- 10
+# outs <- NULL
+# 
+# for(i in 1:k){
+#   predictions <- compute(nNet, test_data[,1:6])
+#   #extract results
+#   predictions_ <- predictions$net.result
+#   origVals <- max.col(test_data[,7])
+#   predicts <- max.col(predictions_)
+#   outs[i] <- mean(predicts == origVals)
+# }
+# 
+# mean(outs)
+# # 35.2%
+# 
+# #====================
+
+
+```
+
+
+lets  now look at the second largest dataframe by playing position
+
+```{r}
+
+
+
+# Lets look at the second largest Dataset (runningback) 
+
+dim(runningBack)
+
+
+colnames(runningBack)
+
+#remove irrelevant col names
+removeCols <- c(1,2,3,4,7,8,9,10)
+runningBack <- subset(runningBack, select = -removeCols)
+
+```
+
+```{r}
+
+#lets examine the unscaled values for the continuous variables for distribution/skwness. 
+
+#combineHeight
+(height_Skew <- skewness(runningBack$combineHeight))
+# 0.05169024 skewness between -0.5 and 0.5 suggests that height data comes from an approximately symmetrical population
+
+# we can visualise this in a histogram and box plots
+
+
+#density histogram - Height - Close to Normal Distribution
+height_density <- ggplot(runningBack, aes(x=combineHeight, y=..density..))+
+  geom_density(size=0.7, color='red', adjust=1.5)+
+  geom_histogram(binwidth = 1)
+plot <- height_density + ggtitle("Plot of Running Back Height")
+ggsave(plot, filename = 'RunningBackHeight Density histogram.png')
+
+#A boxplot displaying the spread of height
+(height_box <- ggplot(wideReceiver,aes("",combineHeight))+geom_boxplot()+coord_flip()+scale_x_discrete())
+ggsave(height_box, filename = 'Player_height Box_plot.png')
+
+```
+
+```{r}
+#combineWeight
+(weight_Skew <- skewness(runningBack$combineWeight))
+# -0.05926214 skewness between -0.5 and 0.5 suggests that weight data comes from an approximately symmetrical population
+
+# we can visualise this in a histogram and box plots
+# Histograms of weight distribution among players
+
+#density histogram - weight - Close to Normal Distribution
+(Weight_density <- ggplot(runningBack, aes(x=combineWeight, y=..density..))+
+  geom_density(size=0.7, color='red', adjust=1.5)+
+  geom_histogram(binwidth =5.5))
+plot <- Weight_density + ggtitle("Weight Distribution of Running Backs")
+ggsave(plot, filename = 'RunningBackWeight Density histogram.png')
+
+#A boxplot displaying the spread of Weight
+#visualise the spread of weight in a box plot
+(weight_box <- ggplot(runningBack,aes("",combineWeight))+geom_boxplot()+coord_flip()+scale_x_discrete())
+ggsave(weight_box, filename = 'RunningBack_weight Box_plot.png')
+
+
+```
+
+
+```{r}
+#ageAtDraft
+(Age_Skew <- skewness(runningBack$ageAtDraft))
+# 0.2450258 (between 0 and 0.5)  = suggests age comes from a normally distributed population
+
+# we can visualise this in a histogram and box plots
+# Histograms of age distribution among players
+#density histogram - AGE - Close to Normal Distribution
+(age_density <- ggplot(runningBack, aes(x=ageAtDraft, y=..density..))+
+  geom_density(size=0.7, color='red', adjust=1.5)+
+  geom_histogram(binwidth = 1))
+plot <- age_density+ggtitle("Distribution of Running Back age")
+ggsave(plot, filename = 'Running Back age Density histogram.png')
+
+#A boxplot displaying the spread of Age.
+#visualise the spread of Age in a box plot
+(age_box <- ggplot(runningBack,aes("",ageAtDraft))+geom_boxplot()+coord_flip()+scale_x_discrete())
+ggsave(age_box, filename = 'RunningBack_Age Box_plot.png')
+
+
+
+```
+
+
+```{r}
+
+
+# combine40yd
+
+(fortyYd_Skew <- skewness(runningBack$combine40yd))
+# 0.7304493 (not between 0 and 0.5)  = suggests 40Yd dash data does not come from a normally distributed population
+
+#use Shapiro-Wilks function to quantify a p.value and indicate how closely (or not) the data is to being Normally distributed
+result <- shapiro.test(runningBack$combine40yd)
+result$p.value
+# p-value = 1.632041e //  p.value>0.05 indicates statistical significanece.
+
+# we can visualise this in a histogram and box plots
+# Histograms of combine40yd distribution among players
+#density histogram - combine40yd - Close to Normal Distribution
+(fortyYd_density <- ggplot(runningBack, aes(x=combine40yd, y=..density..))+
+  geom_density(size=0.7, color='red', adjust=1.5)+
+  geom_histogram(binwidth = 0.08))
+plot <- fortyYd_density+ggtitle("Running back 40Yd Density histogram")
+ggsave(plot, filename = 'Running back 40Yd Density histogram.png')
+
+#A boxplot displaying the spread of combine40yd
+#visualise the spread of combine40yd in a box plot
+(fortyYd_box <- ggplot(runningBack,aes("",combine40yd))+geom_boxplot()+coord_flip()+scale_x_discrete())
+ggsave(fortyYd_box, filename = 'RunningBack40Yd Box_plot.png')
+
+#------------------------------------------------
+
+# lets perform a power transformation on the 40yd data
+
+# perform power transformation
+#find an appropriate lambda value to use to transform values in 40yd variable
+#BoxCox plot
+
+bcPlot <- boxcox(runningBack$combine40yd~1,plotit=TRUE, lambda=seq(-10,2.5,2))
+# Lambda value approx -8
+
+#perform the power transformation on combine 40yd by raising the values by the power -2.5
+runningBack$combine40yd <-  runningBack$combine40yd^(-8)
+
+#3. Obtain density plot, boxplot, and normal probability plot to check the effectiveness of data transformation.
+
+hist(runningBack$combine40yd,freq=FALSE,main="Density Plot of Running Back 40Yd, lambda=-8",xlab="40Yd time^(-8)")
+lines(density(runningBack$combine40yd))
+boxplot(runningBack$combine40yd,main="40Yd time, lambda=-8",ylab="40yd^(-8)")
+qqnorm(runningBack$combine40yd,main="Normal Plot, lambda=-8",ylab="40yd^(-8)")
+qqline(runningBack$combine40yd)
+
+#----
+#transformed runningBack 40yd data
+
+#use Shapiro-Wilks function to quantify a p.value and indicate how closely (or not) the data is to being Normally distributed
+result <- shapiro.test(runningBack$combine40yd)
+result$p.value
+# p-value = 0.5156881//  p.value<0.05 is indication that the transformd data does now come from a normally distributed sample.
+
+
+```
+
+```{r}
+
+# combineVert
+
+(vert_Skew <- skewness(runningBack$combineVert))
+# 0.2821821 (between 0 and 0.5)  = suggests vertical data comes from a normally distributed population
+
+# we can visualise this in a histogram and box plots
+# Histograms of combineVert distribution among players
+#density histogram - combine40yd - Close to Normal Distribution
+(vert_density <- ggplot(runningBack, aes(x=combineVert, y=..density..))+
+  geom_density(size=0.7, color='red', adjust=1.5)+
+  geom_histogram(binwidth = 1.3))
+plot <- vert_density+ggtitle("Running Back Vertical Jump Density Ditribution")
+ggsave(plot, filename = 'Vert score Density histogram.png')
+
+#A boxplot displaying the spread of combineVert
+#visualise the spread of combineVert in a box plot
+(vert_box <- ggplot(runningBack,aes("",combineVert))+geom_boxplot()+coord_flip()+scale_x_discrete())
+ggsave(vert_box, filename = 'Running Back Vert Box_plot.png')
+
+```
+
+```{r}
+# combineBench
+
+(bench_Skew <- skewness(runningBack$combineBench))
+# 0.4258496 (between 0 and 0.5)  = suggests bench comes from a normally distributed population
+
+# we can visualise this in a histogram and box plots
+# Histograms of combineBench distribution among players
+#density histogram - combine40yd - Close to Normal Distribution
+(bench_density <- ggplot(runningBack, aes(x=combineBench, y=..density..))+
+  geom_density(size=0.7, color='red', adjust=1.5)+
+  geom_histogram(binwidth = 2))
+plot <- bench_density+ggtitle("Density Distribution of Running Back Bench Scores")
+ggsave(plot, filename = 'Running Back Bench score Density histogram.png')
+
+#A boxplot displaying the spread of combineBench
+#visualise the spread of combineBench in a box plot
+(bench_box <- ggplot(runningBack,aes("",combineBench))+geom_boxplot()+coord_flip()+scale_x_discrete())
+ggsave(bench_box, filename = 'Running Back Bench Box_plot.png')
+
+```
+
+```{r}
+
+
+# combineShuttle
+
+(shuttle_Skew <- skewness(runningBack$combineShuttle))
+# 0.2309637 (between 0 and 0.5)  = suggests shuttle data comes from a normally distributed population
+
+# we can visualise this in a histogram and box plots
+# Histograms of combineShuttle distribution among players
+#density histogram - combineShuttle
+(shuttle_density <- ggplot(runningBack, aes(x=combineShuttle, y=..density..))+
+  geom_density(size=0.7, color='red', adjust=1.5)+
+  geom_histogram(binwidth = .08))
+plot <- shuttle_density+ggtitle("Density Distribution of Running Back Shuttle scores")
+ggsave(plot, filename = 'Shuttle score Density histogram.png')
+
+#A boxplot displaying the spread of combineShuttle
+#visualise the spread of combineShuttle in a box plot
+(shuttle_box <- ggplot(runningBack,aes("",combineShuttle))+geom_boxplot()+coord_flip()+scale_x_discrete())
+ggsave(shuttle_box, filename = 'Running Back Shuttle Box_plot.png')
+
+```
+
+
+
+```{r}
+
+# combineBroad
+
+(broad_Skew <- skewness(runningBack$combineBroad))
+# 0.1790855 (between 0 and 0.5)  = suggests broad jump data does come from a normally distributed population
+#lets look at this further
+
+# we can visualise this in a histogram and box plots
+# Histograms of combineBroad distribution among players
+#density histogram - combineBroad
+(broad_density <- ggplot(runningBack, aes(x=combineBroad, y=..density..))+
+  geom_density(size=0.7, color='red', adjust=2)+
+  geom_histogram(binwidth = 2.7))
+plot <- broad_density+ggtitle("Density Distribution Running Back Broad Jump Scores")
+ggsave(plot, filename = 'Broad score Density histogram.png')
+
+#A boxplot displaying the spread of combineBroad
+#visualise the spread of combineBroad in a box plot
+(broad_box <- ggplot(runningBack,aes("",combineBroad))+geom_boxplot()+coord_flip()+scale_x_discrete())
+ggsave(broad_box, filename = 'Running Back Broad Box_plot.png')
+
+```
+
+```{r}
+
+# combine3cone
+
+(cone_Skew <- skewness(runningBack$combine3cone))
+# 0.3009738 
+#skewness between -0.5 and 0.5 suggests that weight data comes from an approximately symmetrical population
+
+#lets look at this further
+
+# we can visualise this in a histogram and box plots
+# Histograms of combine3cone distribution among players
+#density histogram - combineBroad
+(cone_density <- ggplot(runningBack, aes(x=combine3cone, y=..density..))+
+  geom_density(size=0.7, color='red', adjust=2)+
+  geom_histogram(binwidth = .1))
+plot <- cone_density+ggtitle("Density Distribution Running Back 3 cone score")
+ggsave(plot, filename = ' Running Back 3 cone score Density histogram.png')
+
+#A boxplot displaying the spread of combine3cone
+#visualise the spread of combine3cone in a box plot
+(cone_box <- ggplot(runningBack,aes("",combine3cone))+geom_boxplot()+coord_flip()+scale_x_discrete())
+ggsave(cone_box, filename = 'Running Back Cone Box_plot.png')
+
+```
+
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+```{r}
+
+#lets look at transformed data
+head(runningBack, 10)
+
+
+#lets consider the degree of variance
+#check the variance to decide whether the scaling is required.
+apply(runningBack, 2, var) # significant degree of varaince.
+
+#Apply scaling.
+str(runningBack)
+
+# letsremove our output/dependent variable so as to not apply scaling to it
+remove.col <- length(runningBack)
+remove.col
+scaling <- subset(runningBack, select = -remove.col)
+scaled_RB <- apply(scaling, 2, scale)
+
+# convert scaled data  back to data frme
+scaled_RB <- as.data.frame(scaled_RB)
+
+#add our 'unscaled dependent variable back to the dataset
+scaled_RB$careerSuccess <- runningBack$careerSuccess
+
+#Verify whether now the variance is close to unity.
+apply(scaled_RB, 2, var) # we can see the variables have been scaled
+
+
+#convert target (categorical variable)  to factor in both df's - scaled_WR and wideReceiver
+runningBack$careerSuccess <- as.factor(runningBack$careerSuccess)
+scaled_RB$careerSuccess <- as.factor(scaled_RB$careerSuccess)
+
+```
+
+```{r}
+
+# lets look at any correlation between features and the target feature- careerSuccess
+
+# examine the relationship between height and weight and careerSuccess in a Scatter plot
+# note - can change order arguments are passed here data passed first
+(scatterHeight_Weight <- qplot(data = scaled_RB, 
+      x =combineHeight,
+      y= combineWeight,
+      color =careerSuccess,
+      main = "Running Back Height and Weight v Success"))
+ggsave(scatterHeight_Weight, filename = 'Running Back HeightandWeight v success.png')
+
+# no clustering observed
+
+```
+
+```{r}
+
+colnames(scaled_RB)
+
+# lets look at any correlation between features and the target feature- careerSuccess
+
+# examine the relationship between age and success in a  Scatter plot
+(scatterAge <- qplot(data = runningBack, 
+      x =ageAtDraft,
+      y= careerSuccess,
+      main = "Age (at time of draft) v Success"))
+ggsave(scatterAge, filename = 'Running Back Age v success.png')
+
+# no clustering observed
+
+
+
+```
+
+
+```{r}
+#pairplot 
+
+group<- NA
+
+group[runningBack$careerSuccess ==1] <- 1
+group[runningBack$careerSuccess ==2] <- 2
+group[runningBack$careerSuccess ==3] <- 3
+
+
+pairs(runningBack[,1:3],
+      col = c('red',"cornflowerblue","purple")[group],
+      pch = c(8,18,1) [group],
+      main = 'Running Back Pairplot')
+
+```
+
+
+
+
+This section of code which creates a Pair plot  has a long computational time. If you wish to run this code, please uncomment this section 
+
+
+
+```{r}
+
+
+# install.packages("pairsD3")
+# devtools::install_github("garthtarr/pairsD3")
+# require("pairsD3")
+# library(magrittr)
+
+# pd <- pairsD3(runningBack[,c(1,2,3,4,5,6,7,8,9)], group = runningBack[,10], opacity = 0.9, cex = 2, width = 1200)
+# 
+# savePairs(pd, 'RBpd.html')
+# 
+# 
+# (pdReduced <- pairsD3(runningBack[,c(4,5,8,7,9)], group = runningBack[,10], opacity = 0.9, cex = 2, width = 1023))
+# savePairs(pdReduced, 'RunningBack pdReduced.html')
+
+
+
+```
+
+```{r}
+
+# Lets look at the class balance of the target variable
+(success_count <-  runningBack %>% count(careerSuccess))
+
+
+#    1   2   3 
+#    6 168  65 
+
+# calculate class balance as percentage
+#first change 
+nrow(runningBack)
+#239
+
+#invoke calculatePct function
+#class 1 - below average
+(class1pct <- calculatePct(success_count, runningBack, 1,2))
+# 2.5
+
+#class 2 - average
+(class2pct <- calculatePct(success_count, runningBack, 2,2))
+# 70.3
+
+# class 3 - above average
+(class3pct <- calculatePct(success_count, runningBack, 3,2))
+# 27.2
+
+
+# #this shows a class mismatch - use SMOTE to synthesize points of class 1 and 3 - (below average and above average)
+
+#first convert target variable to factor
+runningBack$careerSuccess <-  as.factor(runningBack$careerSuccess)
+
+First_Imbalence_correctt <- DMwR::SMOTE(careerSuccess ~ ., runningBack, perc.over = 2000,perc.under=100)
+
+Final_Imbalence_correct <- DMwR::SMOTE(careerSuccess ~ ., First_Imbalence_correctt, perc.over = 2000,perc.under=200)
+# Lets look at the class balance of the target variable after SMOTE
+(success_count <-  Final_Imbalence_correct %>% count(careerSuccess))
+
+
+
+# lets now check percentage distribution of each class
+#class 1 - below average
+(class1pct <- calculatePct(success_count, Final_Imbalence_correct, 1,2))
+# 38%
+
+#class 2 - average
+(class2pct <- calculatePct(success_count, Final_Imbalence_correct, 2,2))
+# 28%
+
+# class 3 - above average
+(class3pct <- calculatePct(success_count, Final_Imbalence_correct, 3,2))
+# 34%
+
+```
+
+```{r}
+# building a classification model
+
+#Random forest classifier
+
+# STEP I : 
+#--------------------------------
+
+set.seed(71)
+
+#split into 70% trianing and 30% testing
+split = sample.split(Final_Imbalence_correct$careerSuccess, SplitRatio = 0.7)
+training_data = subset(Final_Imbalence_correct, split == TRUE) # True = 70% 
+test_data = subset(Final_Imbalence_correct, split == FALSE) # False = 30%
+
+```
+
+```{r}
+
+#Step II : Train the classifier to obtain a random forest classifier model.
+#--------------------------------------------------------------------------
+
+set.seed(71)
+
+#build with 3 variables at each node - square root of number of variables
+rf <-randomForest(factor(careerSuccess)~.,data=training_data, mtry=3, importance=TRUE,ntree=500)
+rf
+# OOB estimate of  error rate: 0.09%
+
+# now try 2
+rf <-randomForest(factor(careerSuccess)~.,data=training_data, mtry=2, importance=TRUE,ntree=500)
+rf
+# OOB estimate of  error rate: 0.05%
+
+
+#now try 4
+rf <-randomForest(factor(careerSuccess)~.,data=training_data, mtry=4, importance=TRUE,ntree=500)
+rf
+# OOB estimate of  error rate: 0.14%
+
+
+# Find the optimal value of mtry.
+
+mtry <- tuneRF(training_data[-10],training_data$careerSuccess, ntreeTry=500,
+               stepFactor=1.5,improve=0.01, trace=TRUE, plot=TRUE)
+mtry
+mtry[, 2] == min(mtry[, 2])
+best.m <- mtry[mtry[, 2] == min(mtry[, 2]), 1]
+
+print(best.m)
+
+#Apply random forest (rf) with the optimal value of mtry.
+set.seed(71)
+rf <-randomForest(factor(careerSuccess)~.,data=training_data, mtry=best.m, importance=TRUE,ntree=500)
+rf
+
+oobData <- as.data.table(plot(rf))
+oobData[,trees:=.I]
+oobData2 <- melt(oobData, id.vars = 'trees')
+setnames(oobData2, 'value', 'error')
+
+(OOB.RF <- ggplot(data = oobData2, aes(x= trees, y = error, color = variable))+
+  geom_line())
+ggsave(OOB.RF, filename = "Running Back OOB.RF.PNG")
+
+# we can see that very few errors greater than approx 100 trees
+# Lets grow another RF with 100 trees
+rf <-randomForest(factor(careerSuccess)~.,data=training_data, mtry=best.m, importance=TRUE,ntree=100)
+rf
+
+oobData <- as.data.table(plot(rf))
+oobData[,trees:=.I]
+oobData2 <- melt(oobData, id.vars = 'trees')
+setnames(oobData2, 'value', 'error')
+
+((OOB.RF <- ggplot(data = oobData2, aes(x= trees, y = error, color = variable))+
+  geom_line()))
+ggsave(OOB.RF, filename = "Running Back fewer trees OOB.RF2.PNG")
+
+
+```
+
+```{r}
+#Step III: Evaluate the classifier on the test data. 
+#--------------------------------------------------
+
+
+#Predicting the Test set results.
+y_pred = predict(rf, newdata = test_data)
+
+
+(confusion.matrix <- table(y_pred,test_data$careerSuccess))
+
+
+(Classification.Accuracy <- 100*Accuracy(y_pred,test_data$careerSuccess))
+# 99.6% accuracy
+
+
+my.stats <- function(actual, predicted) {
+  confusion.table <- table(Actual = actual, Predicted = predicted)
+  (output <- list(confusion.table=confusion.table))
+  Tp0 <- confusion.table[1]
+  Tp0.5 <- confusion.table[5]
+  Tp1 <- confusion.table[9]
+  E.5_0 <- confusion.table[2]
+  E1_0 <- confusion.table[3]
+  E0_0.5 <- confusion.table[4]
+  E1_0.5 <- confusion.table[6]
+  E0_1 <- confusion.table[7]
+  E0.5_1 <- confusion.table[8]
+  Tn0 <- (sum(confusion.table[1:9])-(sum(confusion.table[1:3])+(confusion.table[4]+confusion.table[7])))
+  Tn0.5 <- (sum(confusion.table[1:9])-(sum(confusion.table[4:6])+(confusion.table[2]+confusion.table[8])))
+  Tn1 <- (sum(confusion.table[1:9])-(sum(confusion.table[7:9])+(confusion.table[3]+confusion.table[6])))
+  output$accuracy <- (Tp0+Tp0.5+Tp1)/sum(confusion.table)
+  output$precisonClass0 <- (Tp0)/(Tp0+E.5_0+E1_0)
+  output$precisonClass0.5 <- (Tp0.5)/(Tp0.5+E0_0.5+E1_0.5)
+  output$precisonClass1 <- (Tp1)/(Tp1+E0_1+E0.5_1)
+  output$sensitivityClass0 <- (Tp0)/(Tp0+E0_0.5+E0_1)
+  output$sensitivityClass0.5 <- (Tp0.5)/(Tp0.5+E0_0.5+E0.5_1)
+  output$sensitivityClass1 <- (Tp1)/(Tp1+E0_1+E1_0.5)
+  output$specificityClass0 <- (Tn0)/(Tn0+E.5_0+E1_0)
+  output$specificityClass0.5 <- (Tn0.5)/(Tn0.5+E0_0.5+E1_0.5)
+  output$specificityClass1 <- (Tn1)/(Tn1+E.5_0+E0.5_1)
+
+  
+  
+ 
+  
+  return(output)
+  
+}
+
+
+my.stats(actual = as.factor(test_data$careerSuccess), predicted =y_pred )
+
+
+preds <- as.numeric(predict(rf, newdata = test_data, type = 'response' ))
+roc.multi <- multiclass.roc(test_data$careerSuccess, preds)
+auc(roc.multi)
+(rs <- roc.multi[['rocs']])
+plot.roc(rs[[1]])
+sapply(2:length(rs), function(i) lines.roc(rs[[i]],col=i))
+
+
+
+
+
+
+#============================================
+
+
+```
+
+
+```{r}
+
+#we will not remove the height, shuttle and vertical jump scores, as we have seen that although there is some colinnearity with certain featurs, the RF performed better when these are included.
+
+
+```
+
+
+
+
+
+
+
+
+```{r}
+#Lets use KNN to build a classification model on RB dataset
+
+install.packages("class")
+library(class)
+
+
+
+#split into 70% trianing and 30% testing
+split = sample.split(Final_Imbalence_correct$careerSuccess, SplitRatio = 0.7)
+training_data = subset(Final_Imbalence_correct, split == TRUE) # True = 70% 
+test_data = subset(Final_Imbalence_correct, split == FALSE) # False = 30%
+
+
+
+train.labels <-training_data[,10]  
+test.labels <- test_data[,10]
+
+
+train.labels <- as.data.frame(train.labels)
+test.labels <- as.data.frame(test.labels)
+
+nrow(train.labels) #to find number of observations
+
+
+
+
+train.labels$train.labels <- as.factor(train.labels$train.labels)
+test.labels$test.labels <- as.factor(test.labels$test.labels)
+#convert labels to vector
+train_labs <- train.labels[,1]
+test_labs <- test.labels[,1]
+error.train <- replicate(0,5)
+for(k in 1:5){
+knn_pred <- knn(train=training_data[,1:9],
+             test = training_data[,1:9],
+             train_labs,
+             k)
+      error.train[k] <- 1-mean(knn_pred==train_labs)
+}
+error.train <- unlist(error.train,use.names = FALSE)
+
+ error.test <- replicate(0,5)
+ for(k in 1:5){
+ knn_pred <- knn(train=training_data[,1:9],
+              test = test_data[,1:9],
+              train_labs,
+              k)
+       error.test[k] <- 1-mean(knn_pred==test_labs)
+ 
+}
+error.test <- unlist(error.test,use.names = FALSE)
+
+
+plot(error.train, type="o", ylim=c(0,0.05), col="blue", xlab = "K values", ylab = "Misclassification errors")
+lines(error.test, type = "o", col="red")
+legend("topright", legend=c("Training error","Test error"), col = c("blue","red"), lty=1:1)
+
+
+
+ knn.1 <- knn(train=training_data[,1:6],
+              test = test_data[,1:6],
+              train_labs,
+              k=1)
+ 
+  knn.2 <- knn(train=training_data[,1:6],
+              test = test_data[,1:6],
+              train_labs,
+              k=2)
+
+Acc1 <- 100*sum(test.labels[,1]==knn.1)/nrow(test.labels)
+Acc2 <- 100*sum(test.labels[,1]==knn.2)/nrow(test.labels)
+
+Acc1 
+#98.96
+Acc2
+#96.35%
+
+table(test_data$careerSuccess, knn.1)
+table(test_data$careerSuccess, knn.2)
+
+
+```
+
+
+Training and build time for the Neural network is long ~ 4-5 hours.
+To run these sections of code please uncomment this section 
+
+```{r}
+# 
+# # Classification model using neural networks
+# #lets normalise the data
+# # we will retain career success as output labels 1,2,3
+# Final_Imbalence_correct1 <- Final_Imbalence_correct
+# 
+# #min-max normalisation
+# for(i in 1:6){
+#   Final_Imbalence_correct1[,i] <-  (Final_Imbalence_correct[,i]-min(Final_Imbalence_correct[,i]))/(max(Final_Imbalence_correct[,i])-min(Final_Imbalence_correct[,i]))
+# }
+# 
+# 
+# 
+# # data partition
+# set.seed(12345)
+# #split data
+# split = sample.split(Final_Imbalence_correct1$careerSuccess, SplitRatio = 0.7)
+# training_data = subset(Final_Imbalence_correct1, split == TRUE) # True = 70% 
+# test_data = subset(Final_Imbalence_correct1, split == FALSE) # False = 30%
+# 
+# 
+# #write.csv(Final_Imbalence_correct1, "C:\\Users\\User\\Desktop\\UU Software Masters\\COM814\\NFL1\\RunningBack.csv", row.names = FALSE)
+# 
+# #neural Networks
+# 
+# nNet <- neuralnet(careerSuccess~ .,
+#                   data = training_data,
+#                   hidden = 1,
+#                   err.fct ="sse",
+#                   act.fct = "logistic",
+#                   linear.output = FALSE,
+#                   stepmax=1e7)
+# 
+# plot(nNet)
+# 
+# #lets look at accuracy on training set
+# output <- compute(nNet, training_data[,-10])
+# prediction <- output$net.result
+# 
+# origVals <- max.col(training_data[,10])
+# prediction2 <- max.col(prediction)
+# mean(prediction2==origVals)
+# #59.9%
+# #cross validation
+# 
+# #10 fold Cross validation
+# 
+# set.seed (500)
+# k <- 10
+# outs <- NULL
+# 
+# for(i in 1:k){
+#   predictions <- compute(nNet, test_data[,1:9])
+#   #extract results
+#   predictions_ <- predictions$net.result
+#   origVals <- max.col(test_data[,10])
+#   predicts <- max.col(predictions_)
+#   outs[i] <- mean(predicts == origVals)
+# }
+# 
+# mean(outs)
+# 
+# # 100%
+# 
+# #============================
+# 
+# # lets try with 2 nodes in the single hidden layer
+# 
+# nNet <- neuralnet(careerSuccess~ .,
+#                   data = training_data,
+#                   hidden = 2,
+#                   err.fct ="sse",
+#                   act.fct = "logistic",
+#                   linear.output = FALSE,
+#                   stepmax=1e7)
+# 
+# 
+# 
+# plot(nNet)
+# 
+# #lets look at accuracy on training set
+# output <- compute(nNet, training_data[,-10])
+# prediction <- output$net.result
+# 
+# origVals <- max.col(training_data[,10])
+# prediction2 <- max.col(prediction)
+# mean(prediction2==origVals)
+# # 59.4%
+# #cross validation
+# 
+# #10 fold Cross validation
+# 
+# set.seed (500)
+# k <- 10
+# outs <- NULL
+# 
+# for(i in 1:k){
+#   predictions <- compute(nNet, test_data[,1:9])
+#   #extract results
+#   predictions_ <- predictions$net.result
+#   origVals <- max.col(test_data[,10])
+#   predicts <- max.col(predictions_)
+#   outs[i] <- mean(predicts == origVals)
+# }
+# 
+# mean(outs)
+# # 62%
+
+```
+
+
+
